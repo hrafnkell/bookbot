@@ -1,0 +1,34 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Test / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Logs and local data
+*.log
+
+# OS / editor
+.DS_Store
+Thumbs.db
+
+# Project-specific outputs
+results/
+temp/
+files/
+
+.airc_pkg/
