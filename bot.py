@@ -1,143 +1,29 @@
+import argparse
 import asyncio
-import http.server
-import queue
+import os
+import re
 import shlex
-import socket
-import struct
-import threading
-import urllib.parse
 import zipfile
 from pathlib import Path
-
-from airc.client import DefaultClient
-from airc.enums import EventType
-from airc.events import Event
-from airc.server import (
-    DefaultServer,
-    _handle_args,
-    _handle_command,
-    _handle_prefix,
-    _handle_tags,
-    _regexp_rfc,
-)
-from airc.utils import LineBuffer
+import irc3
 
 
-class BotState:
-    def __init__(self, server_host: str, server_port: int, nickname: str, channel: str) -> None:
-        self.server_host = server_host
-        self.server_port = server_port
-        self.nickname = nickname
-        self.channel = channel
-        self.connected = False
-        self.connecting = False
-        self.last_error = ""
-        self.queue: queue.SimpleQueue[tuple[str, str | None]] = queue.SimpleQueue()
-        self.temp_dir = Path("temp")
-        self.results_dir = Path("results")
-        self.verbose = True
-        self._pump_task: asyncio.Task | None = None
+TEMP_DIR = Path("temp")
+TEMP_DIR.mkdir(parents=True, exist_ok=True)
+RESULTS_DIR = Path("results")
+RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+FILES_DIR = Path("files")
+FILES_DIR.mkdir(parents=True, exist_ok=True)
 
-
-class StatusHandler(http.server.BaseHTTPRequestHandler):
-    def do_GET(self) -> None:
-        if self.path != "/":
-            self.send_error(404)
-            return
-        state: BotState = self.server.state
-        status = "connected" if state.connected else "connecting" if state.connecting else "disconnected"
-        body = f"""<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <title>IRC Bot Status</title>
-    <style>
-      body {{ font-family: sans-serif; margin: 2rem; }}
-      .status {{ font-weight: bold; }}
-      form {{ margin: 0.75rem 0; }}
-    </style>
-  </head>
-  <body>
-    <h1>IRC Bot Status</h1>
-    <p>Status: <span class="status">{status}</span></p>
-    <p>Server: {state.server_host}:{state.server_port}</p>
-    <p>Nick: {state.nickname}</p>
-    <p>Channel: {state.channel}</p>
-    <p>Last error: {state.last_error or "-"}</p>
-    <form method="post" action="/connect">
-      <button type="submit">Connect</button>
-    </form>
-    <form method="post" action="/disconnect">
-      <button type="submit">Disconnect</button>
-    </form>
-    <form method="post" action="/send">
-      <input type="text" name="message" placeholder="Message" size="50">
-      <button type="submit">Send to #ebooks</button>
-    </form>
-  </body>
-</html>
-"""
-        self.send_response(200)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.send_header("Content-Length", str(len(body.encode("utf-8"))))
-        self.end_headers()
-        self.wfile.write(body.encode("utf-8"))
-
-    def do_POST(self) -> None:
-        length = int(self.headers.get("Content-Length", "0"))
-        body = self.rfile.read(length).decode("utf-8")
-        params = urllib.parse.parse_qs(body)
-        state: BotState = self.server.state
-
-        if self.path == "/connect":
-            state.queue.put(("connect", None))
-        elif self.path == "/disconnect":
-            state.queue.put(("disconnect", None))
-        elif self.path == "/send":
-            message = params.get("message", [""])[0].strip()
-            if message:
-                state.queue.put(("send", message))
-        else:
-            self.send_error(404)
-            return
-
-        self.send_response(303)
-        self.send_header("Location", "/")
-        self.end_headers()
-
-    def log_message(self, format: str, *args: object) -> None:
-        return
-
-
-def start_status_server(state: BotState, host: str = "0.0.0.0", port: int = 8080) -> None:
-    server = http.server.ThreadingHTTPServer((host, port), StatusHandler)
-    server.state = state
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-
-
-def safe_extract(zip_path: Path, target_dir: Path) -> None:
-    target_dir.mkdir(parents=True, exist_ok=True)
-    with zipfile.ZipFile(zip_path) as archive:
-        target_root = target_dir.resolve()
-        for member in archive.infolist():
-            member_path = (target_dir / member.filename).resolve()
-            if not member_path.is_relative_to(target_root):
-                raise ValueError(f"Blocked zip path: {member.filename}")
-        archive.extractall(target_dir)
-
-
-def decode_dcc_address(raw: str) -> str:
-    if raw.isdigit():
-        return socket.inet_ntoa(struct.pack("!I", int(raw)))
-    return raw
-
-
-def parse_dcc_send(message: str) -> tuple[str, str, int, int | None] | None:
+# --- DCC parsing helpers ---
+# Typical CTCP DCC SEND:
+#   \x01DCC SEND <filename> <ip_as_int> <port> <size>\x01
+def parse_dcc_send(message: str) -> tuple[str, str, int, int] | None:
+    # Parse a CTCP DCC SEND message into filename/address/port/size.
     if not (message.startswith("\x01") and message.endswith("\x01")):
         return None
     payload = message[1:-1]
-    if not payload.startswith("DCC SEND "):
+    if not payload.upper().startswith("DCC SEND "):
         return None
     parts = shlex.split(payload)
     if len(parts) < 5:
@@ -145,308 +31,320 @@ def parse_dcc_send(message: str) -> tuple[str, str, int, int | None] | None:
     filename = parts[2]
     address = parts[3]
     port = int(parts[4])
-    size = int(parts[5]) if len(parts) > 5 and parts[5].isdigit() else None
+    size = int(parts[5]) if len(parts) > 5 and parts[5].isdigit() else 0
     return filename, address, port, size
 
+def int_to_ip(ip_int: int) -> str:
+    # Convert 32-bit int to dotted quad.
+    return ".".join(str((ip_int >> (8 * i)) & 0xFF) for i in reversed(range(4)))
 
-def handle_dcc_receive(
-    state: BotState,
-    filename: str,
-    address: str,
-    port: int,
-    size: int | None,
-    log,
-) -> None:
-    log(f"Starting DCC receive: {filename} from {address}:{port}")
-    temp_dir = state.temp_dir
-    results_dir = state.results_dir
-    temp_dir.mkdir(parents=True, exist_ok=True)
-    results_dir.mkdir(parents=True, exist_ok=True)
-    dest = temp_dir / filename
+
+def safe_extract(zip_path: Path, target_dir: Path) -> None:
+    # Extract a zip while blocking path traversal entries.
+    target_dir.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(zip_path) as archive:
+        target_root = target_dir.resolve()
+        for member in archive.infolist():
+            member_path = (target_dir / member.filename).resolve()
+            if target_root not in member_path.parents and member_path != target_root:
+                raise ValueError(f"Blocked zip path: {member.filename}")
+        archive.extractall(target_dir)
+
+
+def first_text_file(root: Path) -> Path | None:
+    # Find the first .txt file under a directory tree.
+    for path in root.rglob("*"):
+        if path.is_file() and path.suffix.lower() == ".txt":
+            return path
+    return None
+
+
+def unique_extract_dir(base: Path) -> Path:
+    # Pick a non-existent directory name by suffixing a counter.
+    if not base.exists():
+        return base
+    for i in range(1, 1000):
+        candidate = Path(f"{base}_{i}")
+        if not candidate.exists():
+            return candidate
+    raise RuntimeError("Could not allocate extract directory")
+
+
+async def dcc_receive(ip: str, port: int, size: int, out_path: Path) -> None:
+    # Receive a DCC SEND file over TCP and write to disk.
+    """
+    Minimal DCC SEND receiver:
+    - Connects to sender's TCP listener
+    - Reads exactly `size` bytes (or until EOF if size is 0/unknown)
+    - Writes to file
+    Note: Many DCC implementations also send ACKs back; some senders require them.
+    This receiver includes simple ACKs based on bytes received.
+    """
+    reader, writer = await asyncio.open_connection(ip, port)
+
     received = 0
-    try:
-        with socket.create_connection((address, port), timeout=30) as sock, dest.open("wb") as handle:
-            while True:
-                chunk = sock.recv(4096)
-                if not chunk:
-                    break
-                handle.write(chunk)
-                received += len(chunk)
-                try:
-                    sock.sendall(struct.pack("!I", received))
-                except OSError:
-                    pass
-                if size is not None and received >= size:
-                    break
-    except OSError as exc:
-        state.last_error = f"DCC receive failed: {exc}"
-        log(state.last_error)
-        return
-    if size is not None and received < size:
-        state.last_error = "DCC receive incomplete."
-        log(state.last_error)
-        return
-    if zipfile.is_zipfile(dest):
-        try:
-            safe_extract(dest, results_dir)
-        except (ValueError, zipfile.BadZipFile) as exc:
-            state.last_error = f"Unzip failed: {exc}"
-            log(state.last_error)
-            return
-        log(f"Unzipped {filename} into {results_dir}.")
-    else:
-        log(f"Received non-zip file: {dest}")
+    out_path.parent.mkdir(parents=True, exist_ok=True)
 
-
-class LenientLineBuffer(LineBuffer):
-    def lines(self):
-        lines = self._line_sep.split(self.data)
-        self.data = lines.pop()
-        for line in lines:
-            try:
-                yield line.decode("utf-8", "strict")
-            except UnicodeDecodeError:
-                yield line.decode("latin-1")
-
-
-class TcpServer(DefaultServer):
-    __slots__ = ("reader", "writer")
-
-    def __init__(self, uri, master=None, *, loop=None):
-        super().__init__(uri, master, loop=loop)
-        self.reader = None
-        self.writer = None
-        self.buffer = LenientLineBuffer()
-
-    async def connect(self, username, password=""):
-        self.username = username
-        self.password = password
-        host, port = self._uri
-        self.reader, self.writer = await asyncio.open_connection(host, port)
-        self.connected = True
-
-        if self.password:
-            await self.pass_(self.password)
-        await self.nick(self.username)
-        await self.user(self.username, self.username)
-
-    async def disconnect(self):
-        if self.writer is not None:
-            self.writer.close()
-            try:
-                await self.writer.wait_closed()
-            except (ConnectionResetError, OSError):
-                pass
-        self.reader = None
-        self.writer = None
-        self.connected = False
-
-    async def process_data(self):
-        if self.reader is None:
-            await self.disconnect()
-            raise ConnectionError("No connection reader.")
-        data = await self.reader.read(4096)
-        if not data:
-            await self.disconnect()
-            raise ConnectionError("Connection closed by server.")
-        if chr(data[-1]) != "\n":
-            data += b"\n"
-
-        self.buffer.feed(data)
-
-        for line in self.buffer:
-            if not line:
-                continue
-            await self._process_line(line)
-
-        return self
-
-    async def send_raw(self, data):
-        if self.writer is None:
-            raise ConnectionError("Not connected.")
-        if isinstance(data, str):
-            data = data.encode("utf-8")
-        if not data.endswith(b"\r\n"):
-            data += b"\r\n"
-        self.writer.write(data)
-        await self.writer.drain()
-
-    async def _process_line(self, line):
-        event = Event(self, EventType.CLIENT, "all_raw_events", [None, line])
-        await self._handle_event(event)
-
-        match = _regexp_rfc.match(line)
-        if not match:
-            return
-
-        type, command = _handle_command(match.group("command"))
-        command = command.lower()
-
-        args = _handle_args(match.group("argument") or "")
-        tags = _handle_tags(match.group("tags"))
-        prefix = _handle_prefix(match.group("prefix"))
-
-        event = Event(self, type, command, args, prefix, tags)
-        await self._handle_event(event)
-
-
-class BotClient(DefaultClient):
-    def __init__(self, state: BotState, loop: asyncio.AbstractEventLoop) -> None:
-        super().__init__([(state.server_host, state.server_port)], server_type=TcpServer, loop=loop)
-        self.state = state
-        self.server = self.connections[0]
-
-    def log(self, message: str) -> None:
-        if self.state.verbose:
-            print(message)
-
-    async def on_welcome(self, event) -> None:
-        self.state.connected = True
-        self.state.connecting = False
-        self.log("Connected; joining channel.")
-        await event.server.join(self.state.channel)
-
-    async def on_privmsg(self, event) -> None:
-        if not event.arguments:
-            return
-        message = event.arguments[0]
-        if not self.state.verbose:
-            print(f"<{event.prefix.nick}> {message}")
-        if message.startswith("\x01") and self.state.verbose:
-            self.log(f"CTCP received from {event.prefix.nick}: {message!r}")
-        dcc = parse_dcc_send(message)
-        if not dcc:
-            return
-        filename, address, port, size = dcc
-        filename = Path(filename).name
-        if not (filename.startswith("SearchBot") and filename.endswith(".zip")):
-            self.log(f"Ignoring DCC send for {filename}.")
-            return
-        self.log(f"Accepting DCC send for {filename}.")
-        thread = threading.Thread(
-            target=handle_dcc_receive,
-            args=(
-                self.state,
-                filename,
-                decode_dcc_address(address),
-                port,
-                size,
-                self.log,
-            ),
-            daemon=True,
-        )
-        thread.start()
-
-    async def on_notice(self, event) -> None:
-        if not event.arguments:
-            return
-        message = event.arguments[0]
-        if message.startswith("\x01") and self.state.verbose:
-            self.log(f"CTCP NOTICE from {event.prefix.nick}: {message!r}")
-        dcc = parse_dcc_send(message)
-        if not dcc:
-            return
-        filename, address, port, size = dcc
-        filename = Path(filename).name
-        if not (filename.startswith("SearchBot") and filename.endswith(".zip")):
-            self.log(f"Ignoring DCC send for {filename}.")
-            return
-        self.log(f"Accepting DCC send for {filename}.")
-        thread = threading.Thread(
-            target=handle_dcc_receive,
-            args=(
-                self.state,
-                filename,
-                decode_dcc_address(address),
-                port,
-                size,
-                self.log,
-            ),
-            daemon=True,
-        )
-        thread.start()
-
-
-async def run_bot(state: BotState) -> None:
-    loop = asyncio.get_running_loop()
-    client = BotClient(state, loop)
-
-    def log(message: str) -> None:
-        if state.verbose:
-            print(message)
-
-    async def pump() -> None:
-        while state.connected or state.connecting:
-            try:
-                await client.server.process_data()
-            except Exception as exc:
-                state.connected = False
-                state.connecting = False
-                state.last_error = f"Disconnected: {exc}"
-                log(state.last_error)
-                break
-
-    async def connect() -> None:
-        if state.connected or state.connecting:
-            return
-        state.connecting = True
-        log(f"Connecting to {state.server_host}:{state.server_port} as {state.nickname}.")
-        try:
-            await client.server.connect(state.nickname)
-        except Exception as exc:
-            state.last_error = f"Connection failed: {exc}"
-            state.connecting = False
-            log(state.last_error)
-            return
-        state.last_error = ""
-        if state._pump_task is None or state._pump_task.done():
-            state._pump_task = asyncio.create_task(pump())
-
-    async def disconnect() -> None:
-        if not client.server.connected:
-            return
-        log("Disconnect requested.")
-        await client.server.disconnect()
-        state.connected = False
-        state.connecting = False
-
-    async def send_message(message: str) -> None:
-        if not client.server.connected:
-            state.last_error = "Cannot send message while disconnected."
-            log(state.last_error)
-            return
-        log(f"Sending message to {state.channel}: {message}")
-        await client.server.privmsg(state.channel, message)
-
-    async def handle_actions() -> None:
+    with out_path.open("wb") as f:
         while True:
-            try:
-                action, payload = state.queue.get_nowait()
-            except queue.Empty:
+            if size > 0:
+                remaining = size - received
+                if remaining <= 0:
+                    break
+                chunk = await reader.read(min(65536, remaining))
+            else:
+                chunk = await reader.read(65536)
+
+            if not chunk:
                 break
-            log(f"Handling action: {action}")
-            if action == "connect":
-                await connect()
-            elif action == "disconnect":
-                await disconnect()
-            elif action == "send" and payload is not None:
-                await send_message(payload)
 
-    while True:
-        await handle_actions()
-        await asyncio.sleep(0.2)
+            f.write(chunk)
+            received += len(chunk)
+
+            # DCC ACK: 32-bit unsigned int of total bytes received (big-endian)
+            # Some senders require ACKs to continue sending.
+            writer.write(received.to_bytes(4, byteorder="big", signed=False))
+            await writer.drain()
+
+    writer.close()
+    await writer.wait_closed()
 
 
-def main() -> None:
-    server_host = "irc.irchighway.net"
-    server_port = 6667
-    nickname = "JohnBoblem"
-    channel = "#ebooks"
+@irc3.plugin
+class DccReceiverPlugin:
+    """
+    Generic plugin that watches for CTCP DCC SEND and downloads the file to temp/.
+    """
 
-    state = BotState(server_host, server_port, nickname, channel)
-    start_status_server(state)
-    asyncio.run(run_bot(state))
+    def __init__(self, bot):
+        # Track bot state and the last saved DCC path.
+        self.bot = bot
+        self.done = asyncio.Event()
+        self.last_saved_path: Path | None = None
+        self.save_dir = TEMP_DIR
+
+    def _resolve_out_path(self, filename: str) -> Path | None:
+        # Ensure the target filename is safe within save_dir.
+        safe_name = os.path.basename(filename.strip('"'))
+        out_path = (self.save_dir / safe_name).resolve()
+        save_root = self.save_dir.resolve()
+        if save_root not in out_path.parents and out_path != save_root:
+            self.bot.log.warning("Blocked suspicious filename: %r", filename)
+            return None
+        return out_path
+
+    async def _handle_dcc(self, data: str | None) -> None:
+        # Parse and handle a DCC SEND payload from PRIVMSG/NOTICE.
+        if not data:
+            return
+
+        parsed = parse_dcc_send(data)
+        if not parsed:
+            return
+        filename, address, port, size = parsed
+        ip = int_to_ip(int(address)) if address.isdigit() else address
+
+        out_path = self._resolve_out_path(filename)
+        if out_path is None:
+            return
+
+        self.bot.log.info(
+            "Incoming DCC SEND: %s from %s:%d (%d bytes)",
+            out_path.name,
+            ip,
+            port,
+            size,
+        )
+
+        try:
+            await dcc_receive(ip, port, size, out_path)
+            self.bot.log.info("Saved DCC file to %s", out_path)
+            self.last_saved_path = out_path
+        except Exception as e:
+            self.bot.log.exception("DCC receive failed: %s", e)
+        finally:
+            self.done.set()
+
+    @irc3.event(irc3.rfc.PRIVMSG)
+    async def on_privmsg(self, mask=None, event=None, target=None, data=None, **kw):
+        # Listen for CTCP DCC SEND in PRIVMSG.
+        await self._handle_dcc(data)
+
+    @irc3.event(r"^:(?P<mask>\S+) NOTICE (?P<target>\S+) :(?P<data>.+)")
+    async def on_notice(self, mask=None, target=None, data=None, **kw):
+        # Listen for CTCP DCC SEND in NOTICE.
+        await self._handle_dcc(data)
+
+
+@irc3.plugin
+class JoinMessengerPlugin:
+    def __init__(self, bot):
+        # Configure the join channel and message to send once.
+        self.bot = bot
+        self.sent_message = False
+        self.channel = bot.config.get("join_channel")
+        self.message = bot.config.get("join_message")
+
+    def maybe_send(self, channel):
+        # Send the join message once when entering the configured channel.
+        if self.sent_message or not self.channel or channel != self.channel:
+            return
+        self.sent_message = True
+        self.bot.log.info("Joined %s; sending message.", self.channel)
+        self.bot.privmsg(self.channel, self.message)
+        self.bot.get_plugin(DccReceiverPlugin)
+
+    @irc3.event(irc3.rfc.CONNECTED)
+    def on_connected(self, **kw):
+        # Log basic connect lifecycle event.
+        self.bot.log.info("Connected.")
+
+    @irc3.event(r":(?P<mask>\S+) 001 (?P<nick>\S+) :(?P<data>.+)")
+    def on_welcome(self, **kw):
+        # Log welcome to confirm server registration completed.
+        self.bot.log.info("Welcome received; waiting for join then message.")
+
+    @irc3.event(irc3.rfc.JOIN)
+    def on_join(self, mask=None, channel=None, **kw):
+        # Trigger the join message when we see our own join.
+        if not mask or mask.nick != self.bot.nick or not channel:
+            return
+        self.maybe_send(channel.lstrip(":"))
+
+    @irc3.event(irc3.rfc.RPL_ENDOFNAMES)
+    def on_endofnames(self, channel=None, **kw):
+        # Fallback trigger once NAMES list is complete.
+        if channel:
+            self.maybe_send(channel.lstrip(":"))
+
+
+def parse_line_selection(raw: str, max_lines: int) -> list[int] | None:
+    # Parse comma-separated 1-based line numbers within bounds.
+    parts = [p.strip() for p in raw.split(",") if p.strip()]
+    if not parts:
+        return None
+    indices = []
+    for part in parts:
+        if not part.isdigit():
+            return None
+        idx = int(part)
+        if idx < 1 or idx > max_lines:
+            return None
+        indices.append(idx)
+    return indices
+
+
+async def prompt_line_selection(lines: list[str]) -> list[str] | None:
+    # Prompt for line numbers and return selected line contents.
+    prompt = "Line numbers to send (comma-separated): "
+    try:
+        raw = await asyncio.to_thread(input, prompt)
+    except EOFError:
+        return None
+    raw = raw.strip()
+    indices = parse_line_selection(raw, len(lines))
+    if not indices:
+        return None
+    return [lines[i - 1] for i in indices]
+
+
+async def main(message: str, send_delay: float):
+    # Connect to IRC, request the file, and optionally send selected lines.
+    IRC_HOST = "irc.irchighway.net"
+    IRC_PORT = 6669
+    IRC_TLS = False
+
+    NICK = "BigBobby"
+    USERNAME = "bobby"
+    REALNAME = "Big Bob Energy"
+
+    CHANNEL = "#ebooks"
+    MESSAGE = message
+
+    # Optional server password (NOT NickServ). If you need NickServ identify, do it after connect.
+    SERVER_PASSWORD = None  # e.g. "serverpass"
+
+    config = dict(
+        nick=NICK,
+        username=USERNAME,
+        realname=REALNAME,
+        host=IRC_HOST,
+        port=IRC_PORT,
+        ssl=IRC_TLS,
+        #password=SERVER_PASSWORD,
+        timeout=600,
+        includes=[
+            __name__,  # this module
+        ],
+        autojoins=[CHANNEL],
+        join_channel=CHANNEL,
+        join_message=MESSAGE,
+    )
+
+    bot = irc3.IrcBot(**config)
+    plugin = None
+
+    bot.run(forever=False)
+
+    # Wait for DCC or timeout
+    # (plugin is created by irc3 on includes load; give it a moment)
+    await asyncio.sleep(0.5)
+    plugin = plugin or bot.get_plugin(DccReceiverPlugin)
+
+    try:
+        await asyncio.wait_for(plugin.done.wait(), timeout=300)
+    except asyncio.TimeoutError:
+        bot.log.warning("Timed out waiting for DCC.")
+    else:
+        if plugin.last_saved_path:
+            print(f"Saved: {plugin.last_saved_path}")
+            is_txt_zip = plugin.last_saved_path.name.lower().endswith(".txt.zip")
+            if is_txt_zip and zipfile.is_zipfile(plugin.last_saved_path):
+                extract_dir = unique_extract_dir(RESULTS_DIR / plugin.last_saved_path.stem)
+                safe_extract(plugin.last_saved_path, extract_dir)
+                bot.log.info("Unzipped %s to %s", plugin.last_saved_path.name, extract_dir)
+                txt_path = first_text_file(extract_dir)
+                if txt_path:
+                    text = txt_path.read_text(encoding="utf-8", errors="replace")
+                    lines = text.splitlines()
+                    for i, line in enumerate(lines, start=1):
+                        print(f"{i:4d} {line}")
+                    selected = await prompt_line_selection(lines)
+                    if selected is not None:
+                        plugin.save_dir = FILES_DIR
+                        for line in selected:
+                            plugin.last_saved_path = None
+                            plugin.done.clear()
+                            print(f"Sending: {line}")
+                            bot.privmsg(CHANNEL, line)
+                            try:
+                                await asyncio.wait_for(plugin.done.wait(), timeout=300)
+                            except asyncio.TimeoutError:
+                                bot.log.warning("Timed out waiting for DCC.")
+                                break
+                            else:
+                                if plugin.last_saved_path:
+                                    print(f"Saved: {plugin.last_saved_path}")
+                            if send_delay > 0:
+                                await asyncio.sleep(send_delay)
+                        bot.quit("done")
+                        await asyncio.sleep(1)
+                        return
+            else:
+                dest = FILES_DIR / plugin.last_saved_path.name
+                if plugin.last_saved_path != dest:
+                    plugin.last_saved_path.replace(dest)
+                print(f"Saved: {dest}")
+        else:
+            print("No file received.")
+    finally:
+        bot.quit("done")
+        await asyncio.sleep(1)
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("message", help="Message to send after join")
+    parser.add_argument("--send-delay", type=float, default=15.0, help="Delay between line sends in seconds")
+    args = parser.parse_args()
+    asyncio.run(main(args.message, args.send_delay))
