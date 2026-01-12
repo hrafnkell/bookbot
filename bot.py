@@ -1,7 +1,6 @@
 import argparse
 import asyncio
 import os
-import re
 import shlex
 import zipfile
 from pathlib import Path
@@ -9,11 +8,18 @@ import irc3
 
 
 TEMP_DIR = Path("temp")
-TEMP_DIR.mkdir(parents=True, exist_ok=True)
 RESULTS_DIR = Path("results")
-RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 FILES_DIR = Path("files")
-FILES_DIR.mkdir(parents=True, exist_ok=True)
+
+MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB
+
+
+def setup_dirs() -> None:
+    """Create necessary directories if they don't exist."""
+    TEMP_DIR.mkdir(parents=True, exist_ok=True)
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    FILES_DIR.mkdir(parents=True, exist_ok=True)
+
 
 # --- DCC parsing helpers ---
 # Typical CTCP DCC SEND:
@@ -25,7 +31,10 @@ def parse_dcc_send(message: str) -> tuple[str, str, int, int] | None:
     payload = message[1:-1]
     if not payload.upper().startswith("DCC SEND "):
         return None
-    parts = shlex.split(payload)
+    try:
+        parts = shlex.split(payload)
+    except ValueError:
+        return None
     if len(parts) < 5:
         return None
     filename = parts[2]
@@ -33,6 +42,7 @@ def parse_dcc_send(message: str) -> tuple[str, str, int, int] | None:
     port = int(parts[4])
     size = int(parts[5]) if len(parts) > 5 and parts[5].isdigit() else 0
     return filename, address, port, size
+
 
 def int_to_ip(ip_int: int) -> str:
     # Convert 32-bit int to dotted quad.
@@ -46,7 +56,7 @@ def safe_extract(zip_path: Path, target_dir: Path) -> None:
         target_root = target_dir.resolve()
         for member in archive.infolist():
             member_path = (target_dir / member.filename).resolve()
-            if target_root not in member_path.parents and member_path != target_root:
+            if not member_path.is_relative_to(target_root):
                 raise ValueError(f"Blocked zip path: {member.filename}")
         archive.extractall(target_dir)
 
@@ -80,34 +90,45 @@ async def dcc_receive(ip: str, port: int, size: int, out_path: Path) -> None:
     Note: Many DCC implementations also send ACKs back; some senders require them.
     This receiver includes simple ACKs based on bytes received.
     """
-    reader, writer = await asyncio.open_connection(ip, port)
+    if size > MAX_FILE_SIZE:
+        raise ValueError(f"File too large: {size} bytes (max {MAX_FILE_SIZE})")
+
+    reader, writer = await asyncio.wait_for(
+        asyncio.open_connection(ip, port), timeout=30
+    )
 
     received = 0
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    with out_path.open("wb") as f:
-        while True:
-            if size > 0:
-                remaining = size - received
-                if remaining <= 0:
+    try:
+        with out_path.open("wb") as f:
+            while True:
+                if size > 0:
+                    remaining = size - received
+                    if remaining <= 0:
+                        break
+                    chunk = await reader.read(min(65536, remaining))
+                else:
+                    chunk = await reader.read(65536)
+
+                if not chunk:
                     break
-                chunk = await reader.read(min(65536, remaining))
-            else:
-                chunk = await reader.read(65536)
 
-            if not chunk:
-                break
+                f.write(chunk)
+                received += len(chunk)
 
-            f.write(chunk)
-            received += len(chunk)
+                # Enforce size limit for unknown-size transfers
+                if received > MAX_FILE_SIZE:
+                    raise ValueError(f"File exceeded max size: {MAX_FILE_SIZE}")
 
-            # DCC ACK: 32-bit unsigned int of total bytes received (big-endian)
-            # Some senders require ACKs to continue sending.
-            writer.write(received.to_bytes(4, byteorder="big", signed=False))
-            await writer.drain()
-
-    writer.close()
-    await writer.wait_closed()
+                # DCC ACK: 32-bit unsigned int of total bytes received (big-endian)
+                # Mask to handle overflow for files > 4GB
+                ack_value = received & 0xFFFFFFFF
+                writer.write(ack_value.to_bytes(4, byteorder="big"))
+                await writer.drain()
+    finally:
+        writer.close()
+        await writer.wait_closed()
 
 
 @irc3.plugin
@@ -128,7 +149,7 @@ class DccReceiverPlugin:
         safe_name = os.path.basename(filename.strip('"'))
         out_path = (self.save_dir / safe_name).resolve()
         save_root = self.save_dir.resolve()
-        if save_root not in out_path.parents and out_path != save_root:
+        if not out_path.is_relative_to(save_root):
             self.bot.log.warning("Blocked suspicious filename: %r", filename)
             return None
         return out_path
@@ -192,7 +213,6 @@ class JoinMessengerPlugin:
         self.sent_message = True
         self.bot.log.info("Joined %s; sending message.", self.channel)
         self.bot.privmsg(self.channel, self.message)
-        self.bot.get_plugin(DccReceiverPlugin)
 
     @irc3.event(irc3.rfc.CONNECTED)
     def on_connected(self, **kw):
@@ -250,6 +270,8 @@ async def prompt_line_selection(lines: list[str]) -> list[str] | None:
 
 async def main(message: str, send_delay: float):
     # Connect to IRC, request the file, and optionally send selected lines.
+    setup_dirs()
+
     IRC_HOST = "irc.irchighway.net"
     IRC_PORT = 6669
     IRC_TLS = False
@@ -261,9 +283,6 @@ async def main(message: str, send_delay: float):
     CHANNEL = "#ebooks"
     MESSAGE = message
 
-    # Optional server password (NOT NickServ). If you need NickServ identify, do it after connect.
-    SERVER_PASSWORD = None  # e.g. "serverpass"
-
     config = dict(
         nick=NICK,
         username=USERNAME,
@@ -271,7 +290,6 @@ async def main(message: str, send_delay: float):
         host=IRC_HOST,
         port=IRC_PORT,
         ssl=IRC_TLS,
-        #password=SERVER_PASSWORD,
         timeout=600,
         includes=[
             __name__,  # this module
@@ -282,14 +300,12 @@ async def main(message: str, send_delay: float):
     )
 
     bot = irc3.IrcBot(**config)
-    plugin = None
-
     bot.run(forever=False)
 
     # Wait for DCC or timeout
     # (plugin is created by irc3 on includes load; give it a moment)
     await asyncio.sleep(0.5)
-    plugin = plugin or bot.get_plugin(DccReceiverPlugin)
+    plugin = bot.get_plugin(DccReceiverPlugin)
 
     try:
         await asyncio.wait_for(plugin.done.wait(), timeout=300)
@@ -300,9 +316,13 @@ async def main(message: str, send_delay: float):
             print(f"Saved: {plugin.last_saved_path}")
             is_txt_zip = plugin.last_saved_path.name.lower().endswith(".txt.zip")
             if is_txt_zip and zipfile.is_zipfile(plugin.last_saved_path):
-                extract_dir = unique_extract_dir(RESULTS_DIR / plugin.last_saved_path.stem)
+                extract_dir = unique_extract_dir(
+                    RESULTS_DIR / plugin.last_saved_path.stem
+                )
                 safe_extract(plugin.last_saved_path, extract_dir)
-                bot.log.info("Unzipped %s to %s", plugin.last_saved_path.name, extract_dir)
+                bot.log.info(
+                    "Unzipped %s to %s", plugin.last_saved_path.name, extract_dir
+                )
                 txt_path = first_text_file(extract_dir)
                 if txt_path:
                     text = txt_path.read_text(encoding="utf-8", errors="replace")
@@ -345,6 +365,11 @@ async def main(message: str, send_delay: float):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("message", help="Message to send after join")
-    parser.add_argument("--send-delay", type=float, default=15.0, help="Delay between line sends in seconds")
+    parser.add_argument(
+        "--send-delay",
+        type=float,
+        default=15.0,
+        help="Delay between line sends in seconds",
+    )
     args = parser.parse_args()
     asyncio.run(main(args.message, args.send_delay))
