@@ -65,8 +65,15 @@ function updateStatus(data) {
     isConnected = data.is_connected;
 
     // Show/hide config card (show if no config OR editing)
+    // Show/hide config card (show if no config OR editing)
     if (!configExists || editingConfig) {
         configCard.classList.remove('hidden');
+        // Show cancel button only if we are editing an existing config
+        if (configExists) {
+            cancelConfigBtn.classList.remove('hidden');
+        } else {
+            cancelConfigBtn.classList.add('hidden');
+        }
     } else {
         configCard.classList.add('hidden');
     }
