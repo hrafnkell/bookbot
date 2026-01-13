@@ -1,0 +1,376 @@
+* {
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 20px;
+    background: #f5f5f5;
+}
+
+h1 {
+    color: #333;
+}
+
+.card {
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.status-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.status-indicator {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #ccc;
+}
+
+.status-indicator.connected {
+    background: #4caf50;
+}
+
+.status-indicator.disconnected {
+    background: #f44336;
+}
+
+.status-indicator.searching {
+    background: #ff9800;
+}
+
+.status-indicator.downloading {
+    background: #2196f3;
+}
+
+.status-indicator.lines_ready {
+    background: #9c27b0;
+}
+
+.search-form {
+    display: flex;
+    gap: 10px;
+}
+
+.search-form input[type="text"] {
+    flex: 1;
+    padding: 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 16px;
+}
+
+.search-form button {
+    padding: 12px 24px;
+    background: #2196f3;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 16px;
+}
+
+.search-form button:hover {
+    background: #1976d2;
+}
+
+.search-form button:disabled {
+    background: #ccc;
+    cursor: not-allowed;
+}
+
+.progress-bar {
+    height: 20px;
+    background: #e0e0e0;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-top: 10px;
+}
+
+.progress-fill {
+    height: 100%;
+    background: #2196f3;
+    transition: width 0.3s;
+}
+
+.error {
+    color: #f44336;
+    padding: 10px;
+    background: #ffebee;
+    border-radius: 4px;
+    margin-top: 10px;
+}
+
+.lines-container {
+    max-height: 400px;
+    overflow-y: auto;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.line-item {
+    display: flex;
+    align-items: center;
+    padding: 8px 12px;
+    border-bottom: 1px solid #eee;
+}
+
+.line-item:last-child {
+    border-bottom: none;
+}
+
+.line-item:hover {
+    background: #f5f5f5;
+}
+
+.line-item input[type="checkbox"] {
+    margin-right: 10px;
+}
+
+.line-number {
+    color: #999;
+    min-width: 40px;
+    font-family: monospace;
+}
+
+.line-text {
+    flex: 1;
+    font-size: 14px;
+    word-break: break-word;
+}
+
+.files-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.files-list li {
+    padding: 8px 0;
+    border-bottom: 1px solid #eee;
+}
+
+.files-list li:last-child {
+    border-bottom: none;
+}
+
+.btn {
+    padding: 10px 20px;
+    background: #4caf50;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.btn:hover {
+    background: #388e3c;
+}
+
+.btn:disabled {
+    background: #ccc;
+    cursor: not-allowed;
+}
+
+.hidden {
+    display: none;
+}
+
+.breadcrumb {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-bottom: 15px;
+    font-size: 14px;
+}
+
+.breadcrumb a {
+    color: #2196f3;
+    text-decoration: none;
+}
+
+.breadcrumb a:hover {
+    text-decoration: underline;
+}
+
+.breadcrumb span {
+    color: #666;
+}
+
+.browser-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.browser-item {
+    padding: 10px 15px;
+    border-bottom: 1px solid #eee;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.browser-item:last-child {
+    border-bottom: none;
+}
+
+.browser-item:hover {
+    background: #f5f5f5;
+}
+
+.browser-item.dir::before {
+    content: "\1F4C1";
+}
+
+.browser-item.file::before {
+    content: "\1F4C4";
+}
+
+.browser-item.txt::before {
+    content: "\1F4DD";
+}
+
+.result-lines-container {
+    max-height: 400px;
+    overflow-y: auto;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    margin-top: 15px;
+}
+
+.btn-secondary {
+    background: #757575;
+}
+
+.btn-secondary:hover {
+    background: #616161;
+}
+
+.file-search {
+    margin-bottom: 15px;
+}
+
+.file-search input {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+.files-list a {
+    color: #2196f3;
+    text-decoration: none;
+}
+
+.files-list a:hover {
+    text-decoration: underline;
+}
+
+.pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+    margin-top: 15px;
+}
+
+.pagination button {
+    padding: 8px 16px;
+    background: #e0e0e0;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.pagination button:hover:not(:disabled) {
+    background: #bdbdbd;
+}
+
+.pagination button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.pagination span {
+    color: #666;
+}
+
+.file-count {
+    color: #666;
+    font-size: 14px;
+    margin-bottom: 10px;
+}
+
+.config-form {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.config-form label {
+    font-weight: 500;
+    margin-bottom: 5px;
+    display: block;
+}
+
+.config-form input {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+.config-form .form-group {
+    display: flex;
+    flex-direction: column;
+}
+
+.connect-btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    margin-left: auto;
+}
+
+.connect-btn.connect {
+    background: #4caf50;
+    color: white;
+}
+
+.connect-btn.connect:hover {
+    background: #388e3c;
+}
+
+.connect-btn.disconnect {
+    background: #f44336;
+    color: white;
+}
+
+.connect-btn.disconnect:hover {
+    background: #d32f2f;
+}
+
+.connect-btn:disabled {
+    background: #ccc;
+    cursor: not-allowed;
+}

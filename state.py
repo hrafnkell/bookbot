@@ -1,4 +1,5 @@
 import asyncio
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
@@ -20,6 +21,8 @@ class BotState:
     extracted_lines: list[str] | None = None
     files: list[str] = field(default_factory=list)
     error: str | None = None
+    last_activity: float = field(default_factory=time.time)
+    idle_timeout: int = 1200  # Default 20 minutes in seconds
 
     _lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
     _listeners: list[Callable[[], None]] = field(default_factory=list, repr=False)
@@ -78,6 +81,12 @@ class BotState:
             self.error = None
             self._notify()
 
+    def touch_activity(self) -> None:
+        self.last_activity = time.time()
+
+    def is_idle(self) -> bool:
+        return (time.time() - self.last_activity) > self.idle_timeout
+
     def to_dict(self) -> dict:
         return {
             "status": self.status,
@@ -90,6 +99,7 @@ class BotState:
             "extracted_lines": self.extracted_lines,
             "files": self.files,
             "error": self.error,
+            "idle_timeout": self.idle_timeout,
         }
 
 

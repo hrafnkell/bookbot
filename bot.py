@@ -6,6 +6,7 @@ from pathlib import Path
 import irc3
 
 from state import BotState
+from config import IrcConfig, IRC_HOST, IRC_PORT, IRC_TLS, CHANNEL
 
 
 TEMP_DIR = Path("temp")
@@ -13,15 +14,6 @@ RESULTS_DIR = Path("results")
 FILES_DIR = Path("files")
 
 MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB
-
-# IRC configuration
-IRC_HOST = "irc.irchighway.net"
-IRC_PORT = 6669
-IRC_TLS = False
-NICK = "BigBobby"
-USERNAME = "bobby"
-REALNAME = "Big Bob Energy"
-CHANNEL = "#ebooks"
 
 
 def setup_dirs() -> None:
@@ -258,14 +250,17 @@ class IrcBotWrapper:
         self.state = state
         self.bot: irc3.IrcBot | None = None
         self.channel = CHANNEL
+        self.irc_config: IrcConfig | None = None
+        self._connected = False
 
-    def create_bot(self) -> irc3.IrcBot:
+    def create_bot(self, irc_config: IrcConfig) -> irc3.IrcBot:
         setup_dirs()
+        self.irc_config = irc_config
 
         config = dict(
-            nick=NICK,
-            username=USERNAME,
-            realname=REALNAME,
+            nick=irc_config.nick,
+            username=irc_config.username,
+            realname=irc_config.realname,
             host=IRC_HOST,
             port=IRC_PORT,
             ssl=IRC_TLS,
@@ -279,20 +274,42 @@ class IrcBotWrapper:
         self.bot = irc3.IrcBot(**config)
         return self.bot
 
-    def start(self) -> None:
-        if self.bot is None:
-            self.create_bot()
+    def connect(self, irc_config: IrcConfig) -> None:
+        if self._connected:
+            return
+        self.create_bot(irc_config)
         self.bot.run(forever=False)
+        self._connected = True
+
+    def disconnect(self, reason: str = "goodbye") -> None:
+        if self.bot and self._connected:
+            self.bot.quit(reason)
+            self._connected = False
+            self.bot = None
+
+    def is_connected(self) -> bool:
+        # Check both our flag and the actual bot connection state
+        if not self._connected or not self.bot:
+            return False
+        # Check if the bot's protocol is connected
+        # irc3 bots have a 'protocol' attribute that has a 'transport' when connected
+        try:
+            return (
+                hasattr(self.bot, 'protocol') and 
+                self.bot.protocol is not None and
+                hasattr(self.bot.protocol, 'transport') and
+                self.bot.protocol.transport is not None and
+                not self.bot.protocol.transport.is_closing()
+            )
+        except (AttributeError, RuntimeError):
+            # If we can't check the protocol state, fall back to our flag
+            return self._connected
 
     def send_message(self, message: str) -> None:
-        if self.bot:
+        if self.bot and self._connected:
             self.bot.privmsg(self.channel, message)
 
     def get_dcc_plugin(self) -> DccReceiverPlugin | None:
         if self.bot:
             return self.bot.get_plugin(DccReceiverPlugin)
         return None
-
-    def quit(self, reason: str = "goodbye") -> None:
-        if self.bot:
-            self.bot.quit(reason)

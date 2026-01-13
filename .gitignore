@@ -31,4 +31,7 @@ results/
 temp/
 files/
 
+# IRC configuration (user-specific)
+irc_config.json
+
 .airc_pkg/
