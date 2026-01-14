@@ -198,3 +198,12 @@ def get_stats() -> dict:
         "total_results": total,
         "unique_search_terms": unique_terms,
     }
+
+
+def clear_database() -> int:
+    """Clear all results from the database. Returns the number of rows deleted."""
+    with get_connection() as conn:
+        cursor = conn.execute("DELETE FROM results")
+        deleted = cursor.rowcount
+        conn.commit()
+    return deleted

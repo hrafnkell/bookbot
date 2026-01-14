@@ -6,7 +6,7 @@ import jinja2
 
 from state import BotState, list_downloaded_files
 from config import IrcConfig
-from database import search_results, get_all_results, get_stats
+from database import search_results, get_all_results, get_stats, clear_database
 
 
 FILES_DIR = Path("files")
@@ -33,6 +33,7 @@ def create_app(state: BotState, irc_wrapper, send_delay: float = 15.0) -> web.Ap
     app.router.add_get("/db/search", db_search)
     app.router.add_get("/db/stats", db_stats)
     app.router.add_post("/db/select", db_select_lines)
+    app.router.add_post("/db/clear", db_clear)
     app.router.add_get("/config", get_config)
     app.router.add_post("/config", save_config)
     app.router.add_post("/connect", connect)
@@ -264,6 +265,12 @@ async def db_select_lines(request: web.Request) -> web.Response:
         irc_wrapper.send_message(line)
 
     return web.json_response({"success": True, "count": len(lines)})
+
+
+async def db_clear(request: web.Request) -> web.Response:
+    """Clear all results from the database."""
+    deleted = clear_database()
+    return web.json_response({"success": True, "deleted": deleted})
 
 
 async def get_config(request: web.Request) -> web.Response:

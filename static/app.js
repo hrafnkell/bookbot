@@ -40,6 +40,7 @@ const filesPageInfo = document.getElementById('filesPageInfo');
 // Database search elements
 const dbStats = document.getElementById('dbStats');
 const dbSearchInput = document.getElementById('dbSearchInput');
+const clearDbBtn = document.getElementById('clearDbBtn');
 const dbResultsContainer = document.getElementById('dbResultsContainer');
 const dbResultsActions = document.getElementById('dbResultsActions');
 const dbSelectAllBtn = document.getElementById('dbSelectAllBtn');
@@ -554,6 +555,28 @@ dbDownloadBtn.addEventListener('click', async () => {
         alert('Request failed');
     } finally {
         dbDownloadBtn.disabled = false;
+    }
+});
+
+clearDbBtn.addEventListener('click', async () => {
+    if (!confirm('Are you sure you want to clear all saved results? This cannot be undone.')) {
+        return;
+    }
+
+    clearDbBtn.disabled = true;
+    try {
+        const response = await fetch('/db/clear', { method: 'POST' });
+        const data = await response.json();
+        if (!response.ok) {
+            alert(`Error: ${data.error}`);
+        } else {
+            alert(`Deleted ${data.deleted} results`);
+            refreshDbResults();
+        }
+    } catch (e) {
+        alert('Request failed');
+    } finally {
+        clearDbBtn.disabled = false;
     }
 });
 
