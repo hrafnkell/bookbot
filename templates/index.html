@@ -25,50 +25,57 @@
 
     <main class="content">
     <div class="card" id="configCard">
-        <h2>IRC Configuration</h2>
-        <p>Please configure your IRC identity before connecting.</p>
+        <h2 style="margin-bottom: 8px;">IRC Configuration</h2>
         <form class="config-form" id="configForm">
-            <div class="form-group">
-                <label for="configNick">Nickname</label>
-                <input type="text" id="configNick" name="nick" placeholder="e.g., BookLover42" required>
-            </div>
-            <div class="form-group">
-                <label for="configUsername">Username</label>
-                <input type="text" id="configUsername" name="username" placeholder="e.g., booklover" required>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="configNick">Nickname</label>
+                    <input type="text" id="configNick" name="nick" placeholder="e.g., BookLover42" required>
+                </div>
+                <div class="form-group">
+                    <label for="configUsername">Username</label>
+                    <input type="text" id="configUsername" name="username" placeholder="e.g., booklover" required>
+                </div>
             </div>
             <div class="form-group">
                 <label for="configRealname">Real Name</label>
                 <input type="text" id="configRealname" name="realname" placeholder="e.g., Book Enthusiast" required>
             </div>
-            <div class="form-group">
-                <label for="configServer">IRC Server</label>
-                <input type="text" id="configServer" name="server" value="irc.irchighway.net" required>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="configServer">IRC Server</label>
+                    <input type="text" id="configServer" name="server" value="irc.irchighway.net" required>
+                </div>
+                <div class="form-group form-group-small">
+                    <label for="configPort">Port</label>
+                    <input type="number" id="configPort" name="port" value="6669" min="1" max="65535" required>
+                </div>
             </div>
-            <div class="form-group">
-                <label for="configPort">IRC Port</label>
-                <input type="number" id="configPort" name="port" value="6669" min="1" max="65535" required>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="configChannel">Channel</label>
+                    <input type="text" id="configChannel" name="channel" value="#ebooks" required>
+                </div>
+                <div class="form-group form-group-small">
+                    <label for="configIdleTimeout">Idle (min)</label>
+                    <input type="number" id="configIdleTimeout" name="idle_timeout" placeholder="20" min="1" required>
+                </div>
+                <div class="form-group form-group-small">
+                    <label for="configSearchTimeout">Search (sec)</label>
+                    <input type="number" id="configSearchTimeout" name="search_timeout" placeholder="60" min="1" required>
+                </div>
             </div>
-            <div class="form-group">
-                <label for="configChannel">Channel</label>
-                <input type="text" id="configChannel" name="channel" value="#ebooks" required>
-            </div>
-            <div class="form-group">
-                <label for="configIdleTimeout">Idle Timeout (minutes)</label>
-                <input type="number" id="configIdleTimeout" name="idle_timeout" placeholder="20" min="1" required>
-            </div>
-            <div class="form-group">
-                <label for="configSearchTimeout">Search Timeout (seconds)</label>
-                <input type="number" id="configSearchTimeout" name="search_timeout" placeholder="60" min="1" required>
-            </div>
-            <div class="form-group checkbox-group">
-                <label>
-                    <input type="checkbox" id="configAutoConnect" name="auto_connect" checked>
-                    Auto-connect on startup
-                </label>
-            </div>
-            <div style="display: flex; gap: 10px;">
-                <button type="submit" class="btn">Save Configuration</button>
-                <button type="button" class="btn btn-secondary hidden" id="cancelConfigBtn">Cancel</button>
+            <div class="form-row">
+                <div class="form-group checkbox-group">
+                    <label>
+                        <input type="checkbox" id="configAutoConnect" name="auto_connect" checked>
+                        Auto-connect on startup
+                    </label>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn">Save</button>
+                    <button type="button" class="btn btn-secondary hidden" id="cancelConfigBtn">Cancel</button>
+                </div>
             </div>
         </form>
         <div id="configError" class="error hidden"></div>

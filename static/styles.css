@@ -487,19 +487,40 @@ h1, h2, h3 {
 .config-form {
     display: flex;
     flex-direction: column;
-    gap: 15px;
+    gap: 12px;
+}
+
+.config-form .form-row {
+    display: flex;
+    gap: 12px;
+    align-items: flex-end;
+}
+
+.config-form .form-row .form-group {
+    flex: 1;
+}
+
+.config-form .form-row .form-group-small {
+    flex: 0 0 100px;
+}
+
+.config-form .form-actions {
+    display: flex;
+    gap: 10px;
+    margin-left: auto;
 }
 
 .config-form label {
     font-weight: 500;
-    margin-bottom: 5px;
+    margin-bottom: 4px;
     display: block;
     color: var(--ctp-subtext1);
+    font-size: 13px;
 }
 
 .config-form input {
     width: 100%;
-    padding: 10px;
+    padding: 8px 10px;
     background: var(--ctp-surface0);
     border: 1px solid var(--ctp-surface1);
     border-radius: 4px;
