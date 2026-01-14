@@ -345,6 +345,7 @@ async def get_config(request: web.Request) -> web.Response:
         "port": config.port,
         "channel": config.channel,
         "idle_timeout": config.idle_timeout,
+        "search_timeout": config.search_timeout,
         "auto_connect": config.auto_connect,
     })
 
@@ -370,6 +371,13 @@ async def save_config(request: web.Request) -> web.Response:
         return web.json_response({"error": "Idle timeout must be a positive integer"}, status=400)
 
     try:
+        search_timeout = int(data.get("search_timeout", 60))
+        if search_timeout < 1:
+            raise ValueError
+    except (ValueError, TypeError):
+        return web.json_response({"error": "Search timeout must be a positive integer"}, status=400)
+
+    try:
         port = int(data.get("port", DEFAULT_IRC_PORT))
         if port < 1 or port > 65535:
             raise ValueError
@@ -387,12 +395,14 @@ async def save_config(request: web.Request) -> web.Response:
         port=port,
         channel=channel,
         idle_timeout=idle_timeout,
+        search_timeout=search_timeout,
         auto_connect=auto_connect,
     )
     config.save()
 
     # Update runtime state
     request.app["state"].idle_timeout = idle_timeout * 60
+    request.app["state"].search_timeout = search_timeout
 
     return web.json_response({"success": True})
 

@@ -8,6 +8,7 @@ const configServer = document.getElementById('configServer');
 const configPort = document.getElementById('configPort');
 const configChannel = document.getElementById('configChannel');
 const configIdleTimeout = document.getElementById('configIdleTimeout');
+const configSearchTimeout = document.getElementById('configSearchTimeout');
 const configAutoConnect = document.getElementById('configAutoConnect');
 const configError = document.getElementById('configError');
 const editConfigBtn = document.getElementById('editConfigBtn');
@@ -72,11 +73,15 @@ let filesCurrentPage = 1;
 const filesPerPage = 10;
 
 function updateStatus(data) {
+    // Log status changes
+    if (lastStatus && lastStatus !== data.status) {
+        console.log(`[Status] ${lastStatus} → ${data.status}`);
+    }
+
     // Update config and connection state
     configExists = data.config_exists;
     isConnected = data.is_connected;
 
-    // Show/hide config card (show if no config OR editing)
     // Show/hide config card (show if no config OR editing)
     if (!configExists || editingConfig) {
         configCard.classList.remove('hidden');
@@ -145,6 +150,10 @@ function updateStatus(data) {
             : 0;
         downloadInfo.textContent = `${progress.filename} - ${formatBytes(progress.received)} / ${formatBytes(progress.total)}`;
         progressFill.style.width = percent + '%';
+        // Log download progress at 25% intervals
+        if (percent > 0 && percent % 25 === 0) {
+            console.log(`[Download] ${progress.filename}: ${percent}%`);
+        }
     } else {
         progressCard.classList.add('hidden');
     }
@@ -153,6 +162,7 @@ function updateStatus(data) {
     if (data.status === 'lines_ready' && data.extracted_lines) {
         const linesChanged = JSON.stringify(currentLines) !== JSON.stringify(data.extracted_lines);
         if (linesChanged) {
+            console.log(`[Results] Received ${data.extracted_lines.length} lines`);
             currentLines = data.extracted_lines;
             renderLines(data.extracted_lines);
         }
@@ -166,6 +176,11 @@ function updateStatus(data) {
     if (data.files) {
         const filesChanged = JSON.stringify(allFiles) !== JSON.stringify(data.files);
         if (filesChanged) {
+            // Log new files
+            const newFiles = data.files.filter(f => !allFiles.includes(f));
+            if (newFiles.length > 0) {
+                console.log(`[Files] New file(s): ${newFiles.join(', ')}`);
+            }
             allFiles = data.files;
             renderFilesList();
         }
@@ -175,6 +190,7 @@ function updateStatus(data) {
     // Detect transition from lines_ready (new data just added) to another status
     if (lastStatus === 'lines_ready' && data.status !== 'lines_ready') {
         // New data was just added, refresh the database search
+        console.log('[Database] Auto-refreshing after new data added');
         refreshDbResults();
     }
     lastStatus = data.status;
@@ -236,6 +252,7 @@ async function deleteFile(filename) {
         return;
     }
 
+    console.log(`[Files] Deleting: ${filename}`);
     try {
         const response = await fetch(`/files/delete/${encodeURIComponent(filename)}`, {
             method: 'DELETE'
@@ -243,13 +260,16 @@ async function deleteFile(filename) {
         const data = await response.json();
 
         if (!response.ok) {
+            console.error(`[Files] Delete failed: ${data.error}`);
             alert(`Error: ${data.error}`);
             return;
         }
 
+        console.log(`[Files] Deleted: ${filename}`);
         allFiles = allFiles.filter(f => f !== filename);
         renderFilesList();
     } catch (e) {
+        console.error('[Files] Delete request failed:', e);
         alert('Delete request failed');
     }
 }
@@ -284,6 +304,7 @@ async function fetchStatus() {
         const data = await response.json();
         updateStatus(data);
     } catch (e) {
+        console.error('[Status] Connection error:', e);
         statusIndicator.className = 'status-indicator disconnected';
         statusText.textContent = 'Connection error';
     }
@@ -301,8 +322,10 @@ configForm.addEventListener('submit', async (e) => {
     const port = configPort.value.trim();
     const channel = configChannel.value.trim();
     const idle_timeout = configIdleTimeout.value.trim();
+    const search_timeout = configSearchTimeout.value.trim();
     const auto_connect = configAutoConnect.checked;
 
+    console.log(`[Config] Saving: nick=${nick}, server=${server}:${port}, channel=${channel}`);
     try {
         const response = await fetch('/config', {
             method: 'POST',
@@ -315,18 +338,22 @@ configForm.addEventListener('submit', async (e) => {
                 port,
                 channel,
                 idle_timeout,
+                search_timeout,
                 auto_connect
             })
         });
         const data = await response.json();
         if (!response.ok) {
+            console.error('[Config] Save failed:', data.error);
             configError.textContent = data.error;
             configError.classList.remove('hidden');
         } else {
+            console.log('[Config] Saved successfully');
             editingConfig = false;
             fetchStatus();
         }
     } catch (e) {
+        console.error('[Config] Save request failed:', e);
         configError.textContent = 'Failed to save configuration';
         configError.classList.remove('hidden');
     }
@@ -352,6 +379,7 @@ editConfigBtn.addEventListener('click', async () => {
             configPort.value = data.port || '6669';
             configChannel.value = data.channel || '#ebooks';
             configIdleTimeout.value = data.idle_timeout || '20';
+            configSearchTimeout.value = data.search_timeout || '60';
             configAutoConnect.checked = data.auto_connect !== false;
         }
     } catch (e) {
@@ -374,16 +402,22 @@ cancelConfigBtn.addEventListener('click', () => {
 connectBtn.addEventListener('click', async () => {
     connectBtn.disabled = true;
     const endpoint = isConnected ? '/disconnect' : '/connect';
+    const action = isConnected ? 'Disconnecting' : 'Connecting';
 
+    console.log(`[IRC] ${action}...`);
     try {
         const response = await fetch(endpoint, { method: 'POST' });
         const data = await response.json();
         if (!response.ok) {
+            console.error(`[IRC] ${action} failed:`, data.error);
             errorDiv.textContent = data.error;
             errorDiv.classList.remove('hidden');
+        } else {
+            console.log(`[IRC] ${action} successful`);
         }
         fetchStatus();
     } catch (e) {
+        console.error(`[IRC] ${action} request failed:`, e);
         errorDiv.textContent = 'Connection request failed';
         errorDiv.classList.remove('hidden');
     } finally {
@@ -396,15 +430,20 @@ shutdownBtn.addEventListener('click', async () => {
         return;
     }
 
+    console.log('[System] Shutting down...');
     shutdownBtn.disabled = true;
     try {
         const response = await fetch('/shutdown', { method: 'POST' });
         const data = await response.json();
         if (!response.ok) {
+            console.error('[System] Shutdown failed:', data.error);
             alert(`Error: ${data.error}`);
             shutdownBtn.disabled = false;
+        } else {
+            console.log('[System] Shutdown initiated');
         }
     } catch (e) {
+        console.error('[System] Shutdown request failed:', e);
         alert('Shutdown request failed');
         shutdownBtn.disabled = false;
     }
@@ -437,6 +476,7 @@ searchForm.addEventListener('submit', async (e) => {
     const term = searchInput.value.trim();
     if (!term) return;
 
+    console.log(`[Search] Searching IRC for: "${term}"`);
     errorDiv.classList.add('hidden');
     searchBtn.disabled = true;
 
@@ -449,10 +489,14 @@ searchForm.addEventListener('submit', async (e) => {
         });
         const data = await response.json();
         if (!response.ok) {
+            console.error('[Search] Failed:', data.error);
             errorDiv.textContent = data.error;
             errorDiv.classList.remove('hidden');
+        } else {
+            console.log('[Search] Request sent to IRC');
         }
     } catch (e) {
+        console.error('[Search] Request failed:', e);
         errorDiv.textContent = 'Request failed';
         errorDiv.classList.remove('hidden');
     } finally {
@@ -479,6 +523,7 @@ downloadSelectedBtn.addEventListener('click', async () => {
         return;
     }
 
+    console.log(`[Download] Requesting ${indices.length} item(s) from search results`);
     downloadSelectedBtn.disabled = true;
     try {
         const response = await fetch('/select', {
@@ -488,10 +533,14 @@ downloadSelectedBtn.addEventListener('click', async () => {
         });
         const data = await response.json();
         if (!response.ok) {
+            console.error('[Download] Failed:', data.error);
             errorDiv.textContent = data.error;
             errorDiv.classList.remove('hidden');
+        } else {
+            console.log(`[Download] Sent ${indices.length} request(s) to IRC`);
         }
     } catch (e) {
+        console.error('[Download] Request failed:', e);
         errorDiv.textContent = 'Request failed';
         errorDiv.classList.remove('hidden');
     } finally {
@@ -613,6 +662,7 @@ dbDownloadBtn.addEventListener('click', async () => {
         return;
     }
 
+    console.log(`[Database] Requesting ${lines.length} item(s) from saved results`);
     dbDownloadBtn.disabled = true;
     try {
         const response = await fetch('/db/select', {
@@ -622,11 +672,14 @@ dbDownloadBtn.addEventListener('click', async () => {
         });
         const data = await response.json();
         if (!response.ok) {
+            console.error('[Database] Download failed:', data.error);
             alert(`Error: ${data.error}`);
         } else {
+            console.log(`[Database] Sent ${data.count} request(s) to IRC`);
             alert(`Sent ${data.count} items to IRC`);
         }
     } catch (e) {
+        console.error('[Database] Request failed:', e);
         alert('Request failed');
     } finally {
         dbDownloadBtn.disabled = false;
@@ -638,17 +691,21 @@ clearDbBtn.addEventListener('click', async () => {
         return;
     }
 
+    console.log('[Database] Clearing all results...');
     clearDbBtn.disabled = true;
     try {
         const response = await fetch('/db/clear', { method: 'POST' });
         const data = await response.json();
         if (!response.ok) {
+            console.error('[Database] Clear failed:', data.error);
             alert(`Error: ${data.error}`);
         } else {
+            console.log(`[Database] Cleared ${data.deleted} results`);
             alert(`Deleted ${data.deleted} results`);
             refreshDbResults();
         }
     } catch (e) {
+        console.error('[Database] Clear request failed:', e);
         alert('Request failed');
     } finally {
         clearDbBtn.disabled = false;

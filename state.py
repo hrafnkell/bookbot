@@ -23,6 +23,8 @@ class BotState:
     error: str | None = None
     last_activity: float = field(default_factory=time.time)
     idle_timeout: int = 1200  # Default 20 minutes in seconds
+    search_timeout: int = 60  # Default 60 seconds
+    search_started_at: float | None = None
 
     _lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
     _listeners: list[Callable[[], None]] = field(default_factory=list, repr=False)
@@ -44,6 +46,11 @@ class BotState:
     async def set_status(self, status: str) -> None:
         async with self._lock:
             self.status = status
+            # Track when search starts
+            if status == "searching":
+                self.search_started_at = time.time()
+            elif status != "searching":
+                self.search_started_at = None
             self._notify()
 
     async def set_search_term(self, term: str | None) -> None:
@@ -87,6 +94,11 @@ class BotState:
     def is_idle(self) -> bool:
         return (time.time() - self.last_activity) > self.idle_timeout
 
+    def is_search_timed_out(self) -> bool:
+        if self.status != "searching" or self.search_started_at is None:
+            return False
+        return (time.time() - self.search_started_at) > self.search_timeout
+
     def to_dict(self) -> dict:
         return {
             "status": self.status,
@@ -100,6 +112,7 @@ class BotState:
             "files": self.files,
             "error": self.error,
             "idle_timeout": self.idle_timeout,
+            "search_timeout": self.search_timeout,
         }
 
 

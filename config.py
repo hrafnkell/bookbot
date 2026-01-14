@@ -20,6 +20,7 @@ class IrcConfig:
     port: int = DEFAULT_IRC_PORT
     channel: str = DEFAULT_IRC_CHANNEL
     idle_timeout: int = 20
+    search_timeout: int = 60
     auto_connect: bool = True
 
     def save(self) -> None:
@@ -39,6 +40,7 @@ class IrcConfig:
                 port=data.get("port", DEFAULT_IRC_PORT),
                 channel=data.get("channel", DEFAULT_IRC_CHANNEL),
                 idle_timeout=data.get("idle_timeout", 20),
+                search_timeout=data.get("search_timeout", 60),
                 auto_connect=data.get("auto_connect", True),
             )
         except (json.JSONDecodeError, KeyError):

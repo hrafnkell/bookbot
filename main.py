@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import signal
 from aiohttp import web
 
@@ -9,20 +10,36 @@ from web_server import create_app
 from database import init_database
 
 
+# Configure logging
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%H:%M:%S",
+)
+# Reduce noise from aiohttp
+logging.getLogger("aiohttp").setLevel(logging.WARNING)
+
 WEB_PORT = 8044
 SEND_DELAY = 15.0
-IDLE_CHECK_INTERVAL = 60  # Check every minute
+CHECK_INTERVAL = 5  # Check every 5 seconds for timeouts
 
 
 async def idle_checker(state: BotState, irc_wrapper: IrcBotWrapper, stop_event: asyncio.Event):
-    """Periodically check for idle timeout and disconnect if needed."""
+    """Periodically check for idle timeout and search timeout."""
     while not stop_event.is_set():
         try:
-            await asyncio.wait_for(stop_event.wait(), timeout=IDLE_CHECK_INTERVAL)
+            await asyncio.wait_for(stop_event.wait(), timeout=CHECK_INTERVAL)
             break  # Stop event was set
         except asyncio.TimeoutError:
             pass  # Continue checking
 
+        # Check for search timeout
+        if state.is_search_timed_out():
+            print(f"Search timed out after {state.search_timeout} seconds")
+            await state.set_error(f"Search timed out after {state.search_timeout} seconds - no results received")
+            await state.set_status("connected")
+
+        # Check for idle timeout
         if irc_wrapper.is_connected() and state.is_idle():
             print(f"Idle for {state.idle_timeout // 60} minutes. Disconnecting from IRC...")
             irc_wrapper.disconnect("Idle timeout")
@@ -40,6 +57,7 @@ async def main():
     config = IrcConfig.load()
     if config:
         state.idle_timeout = config.idle_timeout * 60
+        state.search_timeout = config.search_timeout
         if config.auto_connect:
             print("Configuration found. Connecting to IRC...")
             irc_wrapper.connect(config)

@@ -426,6 +426,28 @@ h1, h2, h3 {
     color: var(--ctp-sapphire);
 }
 
+.file-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.delete-btn {
+    background: transparent;
+    border: none;
+    color: var(--ctp-overlay0);
+    cursor: pointer;
+    font-size: 18px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    line-height: 1;
+}
+
+.delete-btn:hover {
+    background: var(--ctp-red);
+    color: var(--ctp-crust);
+}
+
 .pagination {
     display: flex;
     justify-content: center;

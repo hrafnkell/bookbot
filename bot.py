@@ -131,6 +131,12 @@ class DccReceiverPlugin:
         self.save_dir = TEMP_DIR
         self.state: BotState | None = bot.config.get("bot_state")
 
+    @irc3.event(r"(?P<raw>.*)")
+    def on_raw(self, raw=None, **kw):
+        """Log all raw IRC messages for debugging DCC issues."""
+        if raw and ("\x01" in raw or "DCC" in raw.upper()):
+            self.bot.log.info("[RAW DCC] %r", raw)
+
     def _resolve_out_path(self, filename: str) -> Path | None:
         safe_name = os.path.basename(filename.strip('"'))
         out_path = (self.save_dir / safe_name).resolve()
@@ -140,9 +146,13 @@ class DccReceiverPlugin:
             return None
         return out_path
 
-    async def _handle_dcc(self, data: str | None) -> None:
+    async def _handle_dcc(self, data: str | None, source: str = "unknown") -> None:
         if not data:
             return
+
+        # Log CTCP messages for debugging
+        if data.startswith("\x01"):
+            self.bot.log.debug("[%s] CTCP message: %r", source, data)
 
         parsed = parse_dcc_send(data)
         if not parsed:
@@ -214,11 +224,20 @@ class DccReceiverPlugin:
 
     @irc3.event(irc3.rfc.PRIVMSG)
     async def on_privmsg(self, mask=None, event=None, target=None, data=None, **kw):
-        await self._handle_dcc(data)
+        await self._handle_dcc(data, source=f"PRIVMSG from {mask}")
 
     @irc3.event(r"^:(?P<mask>\S+) NOTICE (?P<target>\S+) :(?P<data>.+)")
     async def on_notice(self, mask=None, target=None, data=None, **kw):
-        await self._handle_dcc(data)
+        await self._handle_dcc(data, source=f"NOTICE from {mask}")
+
+    @irc3.event(irc3.rfc.CTCP)
+    async def on_ctcp(self, mask=None, event=None, target=None, ctcp=None, **kw):
+        """Handle CTCP messages - irc3 may process these separately."""
+        if ctcp:
+            self.bot.log.info("[CTCP] from %s: %r", mask, ctcp)
+            # Reconstruct the CTCP format that parse_dcc_send expects
+            ctcp_data = f"\x01{ctcp}\x01"
+            await self._handle_dcc(ctcp_data, source=f"CTCP from {mask}")
 
 
 @irc3.plugin

@@ -3,6 +3,9 @@
 ## [Unreleased]
 
 ### Added
+- **Search timeout**: Configurable timeout (default 60 seconds) that resets status to "connected" with error message if no results are received
+- **Console logging**: Added detailed browser console logs for debugging (status changes, searches, downloads, file operations, config saves)
+- **DCC debugging**: Added raw message logging and CTCP handler to help diagnose DCC transfer issues
 - **SQLite database for search results**: Lines starting with `!` are now stored in a SQLite database (`results.db`) with automatic deduplication
 - **Fuzzy search**: Search saved results by multiple words in any order (e.g., "tolkien hobbit epub")
 - **Auto-refresh results**: Database search results automatically refresh when new data is added
