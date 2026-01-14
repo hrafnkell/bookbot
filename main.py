@@ -51,7 +51,9 @@ async def main():
     else:
         print("No configuration found. Please configure via web interface.")
 
-    app = create_app(state, irc_wrapper, SEND_DELAY)
+    stop_event = asyncio.Event()
+
+    app = create_app(state, irc_wrapper, SEND_DELAY, stop_event)
 
     runner = web.AppRunner(app)
     await runner.setup()
@@ -59,8 +61,6 @@ async def main():
     await site.start()
 
     print(f"Web server running at http://localhost:{WEB_PORT}")
-
-    stop_event = asyncio.Event()
 
     def handle_signal():
         print("\nShutting down...")

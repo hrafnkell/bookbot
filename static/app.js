@@ -10,6 +10,7 @@ const configError = document.getElementById('configError');
 const editConfigBtn = document.getElementById('editConfigBtn');
 const cancelConfigBtn = document.getElementById('cancelConfigBtn');
 const connectBtn = document.getElementById('connectBtn');
+const shutdownBtn = document.getElementById('shutdownBtn');
 
 let editingConfig = false;
 
@@ -97,11 +98,9 @@ function updateStatus(data) {
     if (isConnected) {
         connectBtn.textContent = 'Disconnect';
         connectBtn.className = 'connect-btn disconnect';
-        connectBtn.style.marginLeft = '10px';
     } else {
         connectBtn.textContent = 'Connect';
         connectBtn.className = 'connect-btn connect';
-        connectBtn.style.marginLeft = configExists ? '10px' : 'auto';
     }
     connectBtn.disabled = !configExists;
 
@@ -209,8 +208,16 @@ function renderFilesList() {
     // Update list
     if (pageFiles.length > 0) {
         filesList.innerHTML = pageFiles.map(f =>
-            `<li><a href="/files/download/${encodeURIComponent(f)}" download>${escapeHtml(f)}</a></li>`
+            `<li class="file-item">
+                <a href="/files/download/${encodeURIComponent(f)}" download>${escapeHtml(f)}</a>
+                <button class="delete-btn" data-filename="${escapeHtml(f)}" title="Delete file">×</button>
+            </li>`
         ).join('');
+
+        // Add delete handlers
+        filesList.querySelectorAll('.delete-btn').forEach(btn => {
+            btn.addEventListener('click', () => deleteFile(btn.dataset.filename));
+        });
     } else {
         filesList.innerHTML = '<li>No files downloaded yet.</li>';
     }
@@ -219,6 +226,29 @@ function renderFilesList() {
     filesPageInfo.textContent = `Page ${filesCurrentPage} of ${totalPages}`;
     filesPrevBtn.disabled = filesCurrentPage <= 1;
     filesNextBtn.disabled = filesCurrentPage >= totalPages;
+}
+
+async function deleteFile(filename) {
+    if (!confirm(`Delete ${filename}? This cannot be undone.`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/files/delete/${encodeURIComponent(filename)}`, {
+            method: 'DELETE'
+        });
+        const data = await response.json();
+
+        if (!response.ok) {
+            alert(`Error: ${data.error}`);
+            return;
+        }
+
+        allFiles = allFiles.filter(f => f !== filename);
+        renderFilesList();
+    } catch (e) {
+        alert('Delete request failed');
+    }
 }
 
 function renderLines(lines) {
@@ -332,6 +362,25 @@ connectBtn.addEventListener('click', async () => {
         errorDiv.classList.remove('hidden');
     } finally {
         connectBtn.disabled = false;
+    }
+});
+
+shutdownBtn.addEventListener('click', async () => {
+    if (!confirm('Shut down the IRC bot? This will stop the service.')) {
+        return;
+    }
+
+    shutdownBtn.disabled = true;
+    try {
+        const response = await fetch('/shutdown', { method: 'POST' });
+        const data = await response.json();
+        if (!response.ok) {
+            alert(`Error: ${data.error}`);
+            shutdownBtn.disabled = false;
+        }
+    } catch (e) {
+        alert('Shutdown request failed');
+        shutdownBtn.disabled = false;
     }
 });
 

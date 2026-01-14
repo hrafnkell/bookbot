@@ -1,4 +1,5 @@
 import json
+import asyncio
 from pathlib import Path
 from aiohttp import web
 import aiohttp_jinja2
@@ -15,11 +16,17 @@ RESULTS_DIR = Path("results")
 STATIC_DIR = Path(__file__).parent / "static"
 
 
-def create_app(state: BotState, irc_wrapper, send_delay: float = 15.0) -> web.Application:
+def create_app(
+    state: BotState,
+    irc_wrapper,
+    send_delay: float = 15.0,
+    stop_event: asyncio.Event | None = None,
+) -> web.Application:
     app = web.Application()
     app["state"] = state
     app["irc_wrapper"] = irc_wrapper
     app["send_delay"] = send_delay
+    app["stop_event"] = stop_event
 
     templates_dir = Path(__file__).parent / "templates"
     aiohttp_jinja2.setup(app, loader=jinja2.FileSystemLoader(str(templates_dir)))
@@ -31,6 +38,7 @@ def create_app(state: BotState, irc_wrapper, send_delay: float = 15.0) -> web.Ap
     app.router.add_post("/select", select_lines)
     app.router.add_get("/files", get_files)
     app.router.add_get("/files/download/{filename}", download_file)
+    app.router.add_delete("/files/delete/{filename}", delete_file)
     app.router.add_get("/db/search", db_search)
     app.router.add_get("/db/stats", db_stats)
     app.router.add_post("/db/select", db_select_lines)
@@ -39,6 +47,7 @@ def create_app(state: BotState, irc_wrapper, send_delay: float = 15.0) -> web.Ap
     app.router.add_post("/config", save_config)
     app.router.add_post("/connect", connect)
     app.router.add_post("/disconnect", disconnect)
+    app.router.add_post("/shutdown", shutdown)
     app.router.add_static("/static", STATIC_DIR)
 
     return app
@@ -200,6 +209,23 @@ async def download_file(request: web.Request) -> web.Response:
             "Content-Disposition": f'attachment; filename="{target.name}"'
         }
     )
+
+
+async def delete_file(request: web.Request) -> web.Response:
+    """Delete a file from the files directory."""
+    filename = request.match_info.get("filename", "")
+    if not filename:
+        return web.json_response({"error": "Filename required"}, status=400)
+
+    target = _safe_path(FILES_DIR, filename)
+    if target is None or not target.exists() or not target.is_file():
+        return web.json_response({"error": "File not found"}, status=404)
+
+    try:
+        target.unlink()
+        return web.json_response({"success": True, "filename": filename})
+    except OSError as e:
+        return web.json_response({"error": f"Failed to delete: {e}"}, status=500)
 
 
 def _safe_path(base: Path, relative: str) -> Path | None:
@@ -377,4 +403,14 @@ async def disconnect(request: web.Request) -> web.Response:
     irc_wrapper.disconnect("User requested disconnect")
     await state.set_status("disconnected")
 
+    return web.json_response({"success": True})
+
+
+async def shutdown(request: web.Request) -> web.Response:
+    """Request a graceful shutdown of the service."""
+    stop_event = request.app.get("stop_event")
+    if stop_event is None:
+        return web.json_response({"error": "Shutdown not available"}, status=500)
+
+    stop_event.set()
     return web.json_response({"success": True})

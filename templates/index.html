@@ -10,8 +10,20 @@
 </head>
 
 <body>
-    <h1>IRC Book Search Bot</h1>
+    <header class="site-header">
+        <h1>IRC Book Search</h1>
+        <div class="header-controls">
+            <div class="status-bar">
+                <div class="status-indicator" id="statusIndicator"></div>
+                <span id="statusText">Checking status...</span>
+            </div>
+            <button class="btn btn-secondary btn-small" id="editConfigBtn">Edit Config</button>
+            <button class="connect-btn connect" id="connectBtn">Connect</button>
+            <button class="btn btn-danger btn-small" id="shutdownBtn">Shutdown</button>
+        </div>
+    </header>
 
+    <main class="content">
     <div class="card" id="configCard">
         <h2>IRC Configuration</h2>
         <p>Please configure your IRC identity before connecting.</p>
@@ -47,17 +59,8 @@
     </div>
 
     <div class="card">
-        <div class="status-bar">
-            <div class="status-indicator" id="statusIndicator"></div>
-            <span id="statusText">Checking status...</span>
-            <button class="btn btn-secondary" id="editConfigBtn" style="margin-left: auto;">Edit Config</button>
-            <button class="connect-btn connect" id="connectBtn" style="margin-left: 10px;">Connect</button>
-        </div>
-        <div id="searchTermDisplay"></div>
-    </div>
-
-    <div class="card">
         <h2>Search</h2>
+        <div id="searchTermDisplay"></div>
         <form class="search-form" id="searchForm">
             <input type="text" name="term" id="searchInput" placeholder="Enter search term..." required>
             <button type="submit" id="searchBtn">Search</button>
@@ -122,6 +125,7 @@
             <button id="dbNextBtn" disabled>Next</button>
         </div>
     </div>
+    </main>
 
     <script src="/static/app.js"></script>
 </body>
