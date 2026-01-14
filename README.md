@@ -43,6 +43,9 @@ On first run, you'll need to configure your IRC identity through the web interfa
 - **Nickname**: Your IRC nickname
 - **Username**: Your IRC username
 - **Real Name**: Your IRC real name (can be anything)
+- **IRC Server**: Server hostname (default: irc.irchighway.net)
+- **IRC Port**: Server port (default: 6669)
+- **Channel**: Channel to join (default: #ebooks)
 - **Idle Timeout**: Minutes of inactivity before auto-disconnect (default: 20)
 
 The configuration is saved to `irc_config.json` and persists between sessions.

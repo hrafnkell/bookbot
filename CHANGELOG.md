@@ -15,6 +15,7 @@
 - **Static file serving**: Added `/static/` route for serving CSS and JavaScript files
 - **File delete controls**: Added delete buttons with confirmation and API endpoint to remove downloaded files
 - **Shutdown control**: Added header button to gracefully stop the service
+- **Configurable server details**: Added server, port, and channel fields to IRC configuration
 
 ### Changed
 - **Results storage**: Replaced file-based results browser with SQLite database search UI

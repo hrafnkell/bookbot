@@ -6,7 +6,12 @@ import aiohttp_jinja2
 import jinja2
 
 from state import BotState, list_downloaded_files
-from config import IrcConfig
+from config import (
+    IrcConfig,
+    DEFAULT_IRC_SERVER,
+    DEFAULT_IRC_PORT,
+    DEFAULT_IRC_CHANNEL,
+)
 from database import search_results, get_all_results, get_stats, clear_database
 from bot import extract_nick_from_line
 
@@ -336,6 +341,9 @@ async def get_config(request: web.Request) -> web.Response:
         "nick": config.nick,
         "username": config.username,
         "realname": config.realname,
+        "server": config.server,
+        "port": config.port,
+        "channel": config.channel,
         "idle_timeout": config.idle_timeout,
         "auto_connect": config.auto_connect,
     })
@@ -351,6 +359,8 @@ async def save_config(request: web.Request) -> web.Response:
     nick = data.get("nick", "").strip()
     username = data.get("username", "").strip()
     realname = data.get("realname", "").strip()
+    server = data.get("server", DEFAULT_IRC_SERVER).strip()
+    channel = data.get("channel", DEFAULT_IRC_CHANNEL).strip()
     auto_connect = bool(data.get("auto_connect", True))
     try:
         idle_timeout = int(data.get("idle_timeout", 20))
@@ -359,10 +369,26 @@ async def save_config(request: web.Request) -> web.Response:
     except (ValueError, TypeError):
         return web.json_response({"error": "Idle timeout must be a positive integer"}, status=400)
 
-    if not nick or not username or not realname:
+    try:
+        port = int(data.get("port", DEFAULT_IRC_PORT))
+        if port < 1 or port > 65535:
+            raise ValueError
+    except (ValueError, TypeError):
+        return web.json_response({"error": "Port must be between 1 and 65535"}, status=400)
+
+    if not nick or not username or not realname or not server or not channel:
         return web.json_response({"error": "All fields are required"}, status=400)
 
-    config = IrcConfig(nick=nick, username=username, realname=realname, idle_timeout=idle_timeout, auto_connect=auto_connect)
+    config = IrcConfig(
+        nick=nick,
+        username=username,
+        realname=realname,
+        server=server,
+        port=port,
+        channel=channel,
+        idle_timeout=idle_timeout,
+        auto_connect=auto_connect,
+    )
     config.save()
 
     # Update runtime state

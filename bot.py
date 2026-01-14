@@ -6,7 +6,7 @@ from pathlib import Path
 import irc3
 
 from state import BotState
-from config import IrcConfig, IRC_HOST, IRC_PORT, IRC_TLS, CHANNEL
+from config import IrcConfig, DEFAULT_IRC_CHANNEL, IRC_TLS
 from database import add_results
 
 
@@ -287,20 +287,21 @@ class IrcBotWrapper:
     def __init__(self, state: BotState):
         self.state = state
         self.bot: irc3.IrcBot | None = None
-        self.channel = CHANNEL
+        self.channel = DEFAULT_IRC_CHANNEL
         self.irc_config: IrcConfig | None = None
         self._connected = False
 
     def create_bot(self, irc_config: IrcConfig) -> irc3.IrcBot:
         setup_dirs()
         self.irc_config = irc_config
+        self.channel = irc_config.channel
 
         config = dict(
             nick=irc_config.nick,
             username=irc_config.username,
             realname=irc_config.realname,
-            host=IRC_HOST,
-            port=IRC_PORT,
+            host=irc_config.server,
+            port=irc_config.port,
             ssl=IRC_TLS,
             timeout=600,
             includes=[__name__],

@@ -41,6 +41,18 @@
                 <input type="text" id="configRealname" name="realname" placeholder="e.g., Book Enthusiast" required>
             </div>
             <div class="form-group">
+                <label for="configServer">IRC Server</label>
+                <input type="text" id="configServer" name="server" value="irc.irchighway.net" required>
+            </div>
+            <div class="form-group">
+                <label for="configPort">IRC Port</label>
+                <input type="number" id="configPort" name="port" value="6669" min="1" max="65535" required>
+            </div>
+            <div class="form-group">
+                <label for="configChannel">Channel</label>
+                <input type="text" id="configChannel" name="channel" value="#ebooks" required>
+            </div>
+            <div class="form-group">
                 <label for="configIdleTimeout">Idle Timeout (minutes)</label>
                 <input type="number" id="configIdleTimeout" name="idle_timeout" placeholder="20" min="1" required>
             </div>

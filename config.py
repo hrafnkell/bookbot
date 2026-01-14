@@ -5,11 +5,10 @@ from dataclasses import dataclass, asdict
 
 CONFIG_FILE = Path("irc_config.json")
 
-# Fixed IRC server settings (not user-configurable)
-IRC_HOST = "irc.irchighway.net"
-IRC_PORT = 6669
+DEFAULT_IRC_SERVER = "irc.irchighway.net"
+DEFAULT_IRC_PORT = 6669
+DEFAULT_IRC_CHANNEL = "#ebooks"
 IRC_TLS = False
-CHANNEL = "#ebooks"
 
 
 @dataclass
@@ -17,6 +16,9 @@ class IrcConfig:
     nick: str
     username: str
     realname: str
+    server: str = DEFAULT_IRC_SERVER
+    port: int = DEFAULT_IRC_PORT
+    channel: str = DEFAULT_IRC_CHANNEL
     idle_timeout: int = 20
     auto_connect: bool = True
 
@@ -33,6 +35,9 @@ class IrcConfig:
                 nick=data["nick"],
                 username=data["username"],
                 realname=data["realname"],
+                server=data.get("server", DEFAULT_IRC_SERVER),
+                port=data.get("port", DEFAULT_IRC_PORT),
+                channel=data.get("channel", DEFAULT_IRC_CHANNEL),
                 idle_timeout=data.get("idle_timeout", 20),
                 auto_connect=data.get("auto_connect", True),
             )

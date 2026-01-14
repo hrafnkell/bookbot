@@ -4,6 +4,9 @@ const configForm = document.getElementById('configForm');
 const configNick = document.getElementById('configNick');
 const configUsername = document.getElementById('configUsername');
 const configRealname = document.getElementById('configRealname');
+const configServer = document.getElementById('configServer');
+const configPort = document.getElementById('configPort');
+const configChannel = document.getElementById('configChannel');
 const configIdleTimeout = document.getElementById('configIdleTimeout');
 const configAutoConnect = document.getElementById('configAutoConnect');
 const configError = document.getElementById('configError');
@@ -294,6 +297,9 @@ configForm.addEventListener('submit', async (e) => {
     const nick = configNick.value.trim();
     const username = configUsername.value.trim();
     const realname = configRealname.value.trim();
+    const server = configServer.value.trim();
+    const port = configPort.value.trim();
+    const channel = configChannel.value.trim();
     const idle_timeout = configIdleTimeout.value.trim();
     const auto_connect = configAutoConnect.checked;
 
@@ -301,7 +307,16 @@ configForm.addEventListener('submit', async (e) => {
         const response = await fetch('/config', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ nick, username, realname, idle_timeout, auto_connect })
+            body: JSON.stringify({
+                nick,
+                username,
+                realname,
+                server,
+                port,
+                channel,
+                idle_timeout,
+                auto_connect
+            })
         });
         const data = await response.json();
         if (!response.ok) {
@@ -333,6 +348,9 @@ editConfigBtn.addEventListener('click', async () => {
             configNick.value = data.nick || '';
             configUsername.value = data.username || '';
             configRealname.value = data.realname || '';
+            configServer.value = data.server || 'irc.irchighway.net';
+            configPort.value = data.port || '6669';
+            configChannel.value = data.channel || '#ebooks';
             configIdleTimeout.value = data.idle_timeout || '20';
             configAutoConnect.checked = data.auto_connect !== false;
         }
