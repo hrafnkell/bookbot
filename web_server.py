@@ -7,6 +7,7 @@ import jinja2
 from state import BotState, list_downloaded_files
 from config import IrcConfig
 from database import search_results, get_all_results, get_stats, clear_database
+from bot import extract_nick_from_line
 
 
 FILES_DIR = Path("files")
@@ -152,6 +153,19 @@ async def select_lines(request: web.Request) -> web.Response:
     if not selected:
         return web.json_response({"error": "Invalid line indices"}, status=400)
 
+    # Check if all nicks are in the channel
+    missing_nicks = []
+    for line in selected:
+        nick = extract_nick_from_line(line)
+        if nick and not irc_wrapper.is_nick_in_channel(nick):
+            missing_nicks.append(nick)
+
+    if missing_nicks:
+        unique_missing = list(set(missing_nicks))
+        return web.json_response({
+            "error": f"Nick(s) not in channel: {', '.join(unique_missing)}"
+        }, status=400)
+
     state.touch_activity()
     await state.set_extracted_lines(None)
     await state.set_status("connected")
@@ -255,6 +269,19 @@ async def db_select_lines(request: web.Request) -> web.Response:
     # Validate that all lines are strings
     if not all(isinstance(line, str) for line in lines):
         return web.json_response({"error": "Invalid line data"}, status=400)
+
+    # Check if all nicks are in the channel
+    missing_nicks = []
+    for line in lines:
+        nick = extract_nick_from_line(line)
+        if nick and not irc_wrapper.is_nick_in_channel(nick):
+            missing_nicks.append(nick)
+
+    if missing_nicks:
+        unique_missing = list(set(missing_nicks))
+        return web.json_response({
+            "error": f"Nick(s) not in channel: {', '.join(unique_missing)}"
+        }, status=400)
 
     state.touch_activity()
 

@@ -227,10 +227,12 @@ class JoinMessengerPlugin:
         self.bot = bot
         self.channel = bot.config.get("join_channel")
         self.state: BotState | None = bot.config.get("bot_state")
+        self.channel_users: set[str] = set()
 
     @irc3.event(irc3.rfc.CONNECTED)
     async def on_connected(self, **kw):
         self.bot.log.info("Connected.")
+        self.channel_users.clear()
         if self.state:
             await self.state.set_status("connected")
 
@@ -240,13 +242,45 @@ class JoinMessengerPlugin:
 
     @irc3.event(irc3.rfc.JOIN)
     def on_join(self, mask=None, channel=None, **kw):
-        if not mask or mask.nick != self.bot.nick or not channel:
+        if not mask or not channel:
             return
-        self.bot.log.info("Joined %s", channel.lstrip(":"))
+        nick = mask.nick
+        if nick == self.bot.nick:
+            self.bot.log.info("Joined %s", channel.lstrip(":"))
+        else:
+            # Another user joined the channel
+            self.channel_users.add(nick.lower())
+            self.bot.log.debug("User %s joined %s", nick, channel)
+
+    @irc3.event(irc3.rfc.PART)
+    def on_part(self, mask=None, channel=None, **kw):
+        if mask:
+            self.channel_users.discard(mask.nick.lower())
+            self.bot.log.debug("User %s left %s", mask.nick, channel)
+
+    @irc3.event(irc3.rfc.QUIT)
+    def on_quit(self, mask=None, **kw):
+        if mask:
+            self.channel_users.discard(mask.nick.lower())
+            self.bot.log.debug("User %s quit", mask.nick)
+
+    @irc3.event(r"^:\S+ 353 \S+ [=*@] (?P<channel>\S+) :(?P<nicknames>.+)")
+    def on_names(self, channel=None, nicknames=None, **kw):
+        """Handle NAMES reply (353) to get list of users in channel."""
+        if nicknames:
+            for nick in nicknames.split():
+                # Remove mode prefixes (@, +, %, etc.)
+                clean_nick = nick.lstrip('@+%~&')
+                self.channel_users.add(clean_nick.lower())
+            self.bot.log.debug("NAMES: %d users in %s", len(self.channel_users), channel)
 
     @irc3.event(irc3.rfc.RPL_ENDOFNAMES)
     def on_endofnames(self, channel=None, **kw):
-        pass
+        self.bot.log.info("Channel %s has %d users", channel, len(self.channel_users))
+
+    def is_nick_in_channel(self, nick: str) -> bool:
+        """Check if a nick is currently in the channel."""
+        return nick.lower() in self.channel_users
 
 
 class IrcBotWrapper:
@@ -317,3 +351,29 @@ class IrcBotWrapper:
         if self.bot:
             return self.bot.get_plugin(DccReceiverPlugin)
         return None
+
+    def get_join_plugin(self) -> JoinMessengerPlugin | None:
+        if self.bot:
+            return self.bot.get_plugin(JoinMessengerPlugin)
+        return None
+
+    def is_nick_in_channel(self, nick: str) -> bool:
+        """Check if a nick is currently in the channel."""
+        plugin = self.get_join_plugin()
+        if plugin:
+            return plugin.is_nick_in_channel(nick)
+        return False
+
+
+def extract_nick_from_line(line: str) -> str | None:
+    """Extract the nickname from a line starting with !nick.
+
+    Lines are formatted like: !nickname book_name.epub
+    Returns the nickname or None if the line doesn't match the expected format.
+    """
+    if not line.startswith('!'):
+        return None
+    parts = line.split(None, 1)  # Split on first whitespace
+    if parts:
+        return parts[0][1:]  # Remove the leading '!'
+    return None
