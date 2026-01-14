@@ -676,7 +676,6 @@ dbDownloadBtn.addEventListener('click', async () => {
             alert(`Error: ${data.error}`);
         } else {
             console.log(`[Database] Sent ${data.count} request(s) to IRC`);
-            alert(`Sent ${data.count} items to IRC`);
         }
     } catch (e) {
         console.error('[Database] Request failed:', e);
