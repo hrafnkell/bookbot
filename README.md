@@ -22,7 +22,12 @@ A web-based IRC bot for searching and downloading books from IRC channels. Featu
    venv\Scripts\activate     # Windows
    ```
 
-3. Install dependencies:
+   Or skip the virtual environment and install dependencies directly:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+3. Install dependencies if you created a virtual environment:
    ```bash
    pip install -r requirements.txt
    ```
