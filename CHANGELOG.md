@@ -13,6 +13,8 @@
 - **Configurable idle timeout**: Added idle timeout setting (in minutes) that automatically disconnects from IRC after inactivity
 - **Connect/disconnect controls**: Added buttons in the web UI to manually connect and disconnect from IRC
 - **Static file serving**: Added `/static/` route for serving CSS and JavaScript files
+- **File delete controls**: Added delete buttons with confirmation and API endpoint to remove downloaded files
+- **Shutdown control**: Added header button to gracefully stop the service
 
 ### Changed
 - **Results storage**: Replaced file-based results browser with SQLite database search UI
@@ -20,6 +22,7 @@
 - **IRC configuration module**: Moved IRC server constants and user config to dedicated `config.py` module
 - **Connection management**: Bot wrapper now has explicit `connect()`, `disconnect()`, and `is_connected()` methods instead of auto-connecting on start
 - **Activity tracking**: Search and selection actions now update last activity timestamp to reset idle timer
+- **Edit config behavior**: Edit button now toggles the config panel and scrolls to the top
 
 ### Fixed
 - Search button is now disabled when not connected to IRC

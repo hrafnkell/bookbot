@@ -319,6 +319,13 @@ configForm.addEventListener('submit', async (e) => {
 
 // Edit config button handler
 editConfigBtn.addEventListener('click', async () => {
+    if (editingConfig) {
+        editingConfig = false;
+        configError.classList.add('hidden');
+        fetchStatus();
+        return;
+    }
+
     try {
         const response = await fetch('/config');
         const data = await response.json();
@@ -335,6 +342,7 @@ editConfigBtn.addEventListener('click', async () => {
     editingConfig = true;
     configCard.classList.remove('hidden');
     configError.classList.add('hidden');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
 });
 
 // Cancel config button handler
