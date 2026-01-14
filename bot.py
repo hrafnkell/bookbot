@@ -114,12 +114,21 @@ async def dcc_receive(
                 if state:
                     await state.set_download_progress(out_path.name, received, size)
 
-                ack_value = received & 0xFFFFFFFF
-                writer.write(ack_value.to_bytes(4, byteorder="big"))
-                await writer.drain()
+                # Send ACK - ignore connection errors as sender may close early
+                try:
+                    ack_value = received & 0xFFFFFFFF
+                    writer.write(ack_value.to_bytes(4, byteorder="big"))
+                    await writer.drain()
+                except (ConnectionResetError, BrokenPipeError, OSError):
+                    # Sender closed connection, but we got the data
+                    break
     finally:
-        writer.close()
-        await writer.wait_closed()
+        try:
+            writer.close()
+            await writer.wait_closed()
+        except (ConnectionResetError, BrokenPipeError, OSError):
+            # Ignore cleanup errors - file was received
+            pass
 
 
 @irc3.plugin
