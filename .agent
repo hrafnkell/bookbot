@@ -54,9 +54,14 @@ This is an IRC bot application that connects to IRC Highway (#ebooks channel) to
 ├── config.py           # Configuration handling
 ├── main.py             # Application entry point
 ├── requirements.txt    # Python dependencies
-├── irc_config.json     # User IRC credentials (runtime)
+├── README.md           # Project documentation
+├── CHANGELOG.md        # Version history
+├── irc_config.json     # User IRC credentials (runtime, gitignored)
 ├── templates/          # Jinja2 HTML templates
-│   └── index.html      # Web UI
+│   └── index.html      # Web UI (HTML only)
+├── static/             # Static frontend assets
+│   ├── styles.css      # CSS styles
+│   └── app.js          # JavaScript application
 ├── temp/               # Temporary download directory
 ├── results/            # Extracted ZIP contents
 └── files/              # Downloaded non-ZIP files

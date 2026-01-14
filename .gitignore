@@ -34,4 +34,7 @@ files/
 # IRC configuration (user-specific)
 irc_config.json
 
+# SQLite database (runtime)
+results.db
+
 .airc_pkg/

@@ -7,6 +7,7 @@ import irc3
 
 from state import BotState
 from config import IrcConfig, IRC_HOST, IRC_PORT, IRC_TLS, CHANNEL
+from database import add_results
 
 
 TEMP_DIR = Path("temp")
@@ -195,6 +196,9 @@ class DccReceiverPlugin:
                 text = txt_path.read_text(encoding="utf-8", errors="replace")
                 lines = text.splitlines()
                 if self.state:
+                    # Save lines to database
+                    search_term = self.state.search_term
+                    add_results(lines, search_term)
                     await self.state.set_extracted_lines(lines)
                     await self.state.set_status("lines_ready")
             else:

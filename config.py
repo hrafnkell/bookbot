@@ -18,6 +18,7 @@ class IrcConfig:
     username: str
     realname: str
     idle_timeout: int = 20
+    auto_connect: bool = True
 
     def save(self) -> None:
         CONFIG_FILE.write_text(json.dumps(asdict(self), indent=2))
@@ -33,6 +34,7 @@ class IrcConfig:
                 username=data["username"],
                 realname=data["realname"],
                 idle_timeout=data.get("idle_timeout", 20),
+                auto_connect=data.get("auto_connect", True),
             )
         except (json.JSONDecodeError, KeyError):
             return None

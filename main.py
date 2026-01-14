@@ -6,6 +6,7 @@ from state import BotState
 from bot import IrcBotWrapper
 from config import IrcConfig
 from web_server import create_app
+from database import init_database
 
 
 WEB_PORT = 8044
@@ -29,18 +30,24 @@ async def idle_checker(state: BotState, irc_wrapper: IrcBotWrapper, stop_event: 
 
 
 async def main():
+    # Initialize database
+    init_database()
+
     state = BotState()
     irc_wrapper = IrcBotWrapper(state)
 
-    # Auto-connect if config exists
+    # Auto-connect if config exists and auto_connect is enabled
     config = IrcConfig.load()
     if config:
-        print("Configuration found. Connecting to IRC...")
         state.idle_timeout = config.idle_timeout * 60
-        irc_wrapper.connect(config)
-        await asyncio.sleep(0.5)
-        print("IRC bot connected.")
-        state.touch_activity()
+        if config.auto_connect:
+            print("Configuration found. Connecting to IRC...")
+            irc_wrapper.connect(config)
+            await asyncio.sleep(0.5)
+            print("IRC bot connected.")
+            state.touch_activity()
+        else:
+            print("Configuration found. Auto-connect disabled. Use web interface to connect.")
     else:
         print("No configuration found. Please configure via web interface.")
 

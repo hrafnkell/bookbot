@@ -343,6 +343,25 @@ h1 {
     flex-direction: column;
 }
 
+.config-form .checkbox-group {
+    flex-direction: row;
+    align-items: center;
+}
+
+.config-form .checkbox-group label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: normal;
+    margin-bottom: 0;
+    cursor: pointer;
+}
+
+.config-form .checkbox-group input[type="checkbox"] {
+    width: auto;
+    margin: 0;
+}
+
 .connect-btn {
     padding: 8px 16px;
     border: none;
@@ -373,4 +392,72 @@ h1 {
 .connect-btn:disabled {
     background: #ccc;
     cursor: not-allowed;
+}
+
+/* Database search styles */
+.db-stats {
+    color: #666;
+    font-size: 14px;
+    margin-bottom: 15px;
+}
+
+.db-search {
+    margin-bottom: 15px;
+}
+
+.db-search input {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 16px;
+}
+
+.db-results-container {
+    max-height: 400px;
+    overflow-y: auto;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    margin-bottom: 15px;
+}
+
+.db-results-empty {
+    padding: 20px;
+    text-align: center;
+    color: #666;
+    margin: 0;
+}
+
+.db-result-item {
+    display: flex;
+    align-items: flex-start;
+    padding: 10px 12px;
+    border-bottom: 1px solid #eee;
+    gap: 10px;
+}
+
+.db-result-item:last-child {
+    border-bottom: none;
+}
+
+.db-result-item:hover {
+    background: #f5f5f5;
+}
+
+.db-result-item input[type="checkbox"] {
+    margin-top: 3px;
+    flex-shrink: 0;
+}
+
+.db-result-text {
+    flex: 1;
+    font-size: 13px;
+    word-break: break-word;
+    font-family: monospace;
+}
+
+.db-results-actions {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 15px;
 }

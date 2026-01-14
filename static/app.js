@@ -5,6 +5,7 @@ const configNick = document.getElementById('configNick');
 const configUsername = document.getElementById('configUsername');
 const configRealname = document.getElementById('configRealname');
 const configIdleTimeout = document.getElementById('configIdleTimeout');
+const configAutoConnect = document.getElementById('configAutoConnect');
 const configError = document.getElementById('configError');
 const editConfigBtn = document.getElementById('editConfigBtn');
 const cancelConfigBtn = document.getElementById('cancelConfigBtn');
@@ -36,23 +37,29 @@ const filesPrevBtn = document.getElementById('filesPrevBtn');
 const filesNextBtn = document.getElementById('filesNextBtn');
 const filesPageInfo = document.getElementById('filesPageInfo');
 
-// Results browser elements
-const breadcrumb = document.getElementById('breadcrumb');
-const browserList = document.getElementById('browserList');
-const resultFileView = document.getElementById('resultFileView');
-const resultFileName = document.getElementById('resultFileName');
-const resultLinesContainer = document.getElementById('resultLinesContainer');
-const backToBrowserBtn = document.getElementById('backToBrowserBtn');
-const resultSelectAllBtn = document.getElementById('resultSelectAllBtn');
-const resultUnselectAllBtn = document.getElementById('resultUnselectAllBtn');
-const resultDownloadBtn = document.getElementById('resultDownloadBtn');
+// Database search elements
+const dbStats = document.getElementById('dbStats');
+const dbSearchInput = document.getElementById('dbSearchInput');
+const dbResultsContainer = document.getElementById('dbResultsContainer');
+const dbResultsActions = document.getElementById('dbResultsActions');
+const dbSelectAllBtn = document.getElementById('dbSelectAllBtn');
+const dbUnselectAllBtn = document.getElementById('dbUnselectAllBtn');
+const dbDownloadBtn = document.getElementById('dbDownloadBtn');
+const dbPrevBtn = document.getElementById('dbPrevBtn');
+const dbNextBtn = document.getElementById('dbNextBtn');
+const dbPageInfo = document.getElementById('dbPageInfo');
 
 let currentLines = [];
-let currentBrowserPath = '';
-let currentResultFile = null;
 let isConnected = false;
 let configExists = false;
-let resultLines = [];
+
+// Database search state
+let dbCurrentPage = 1;
+let dbTotalResults = 0;
+let dbCurrentQuery = '';
+const dbResultsPerPage = 50;
+let dbLastKnownTotal = 0;
+let lastStatus = '';
 
 // Files pagination state
 let allFiles = [];
@@ -160,6 +167,14 @@ function updateStatus(data) {
             renderFilesList();
         }
     }
+
+    // Auto-refresh database results when new data is added
+    // Detect transition from lines_ready (new data just added) to another status
+    if (lastStatus === 'lines_ready' && data.status !== 'lines_ready') {
+        // New data was just added, refresh the database search
+        refreshDbResults();
+    }
+    lastStatus = data.status;
 }
 
 function getFilteredFiles() {
@@ -249,12 +264,13 @@ configForm.addEventListener('submit', async (e) => {
     const username = configUsername.value.trim();
     const realname = configRealname.value.trim();
     const idle_timeout = configIdleTimeout.value.trim();
+    const auto_connect = configAutoConnect.checked;
 
     try {
         const response = await fetch('/config', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ nick, username, realname, idle_timeout })
+            body: JSON.stringify({ nick, username, realname, idle_timeout, auto_connect })
         });
         const data = await response.json();
         if (!response.ok) {
@@ -280,6 +296,7 @@ editConfigBtn.addEventListener('click', async () => {
             configUsername.value = data.username || '';
             configRealname.value = data.realname || '';
             configIdleTimeout.value = data.idle_timeout || '20';
+            configAutoConnect.checked = data.auto_connect !== false;
         }
     } catch (e) {
         // Ignore errors, just show empty form
@@ -410,142 +427,122 @@ downloadSelectedBtn.addEventListener('click', async () => {
 fetchStatus();
 setInterval(fetchStatus, 2000);
 
-// Results browser functions
-async function loadResultsDirectory(path = '') {
-    currentBrowserPath = path;
+// Database search functions
+async function loadDbStats() {
     try {
-        const url = path ? `/results?path=${encodeURIComponent(path)}` : '/results';
-        const response = await fetch(url);
+        const response = await fetch('/db/stats');
+        const data = await response.json();
+        dbStats.textContent = `${data.total_results} saved results from ${data.unique_search_terms} searches`;
+        dbLastKnownTotal = data.total_results;
+    } catch (e) {
+        dbStats.textContent = '';
+    }
+}
+
+function refreshDbResults() {
+    // Refresh current search results (stats will be updated via searchDatabase)
+    searchDatabase(dbCurrentQuery, dbCurrentPage);
+}
+
+async function searchDatabase(query = '', page = 1) {
+    dbCurrentQuery = query;
+    dbCurrentPage = page;
+    const offset = (page - 1) * dbResultsPerPage;
+
+    try {
+        const params = new URLSearchParams({
+            q: query,
+            limit: dbResultsPerPage.toString(),
+            offset: offset.toString()
+        });
+        const response = await fetch(`/db/search?${params}`);
         const data = await response.json();
 
         if (!response.ok) {
-            browserList.innerHTML = `<li>Error: ${escapeHtml(data.error)}</li>`;
+            dbResultsContainer.innerHTML = `<p class="db-results-empty">Error: ${escapeHtml(data.error)}</p>`;
             return;
         }
 
-        updateBreadcrumb(path);
-
-        if (data.items.length === 0) {
-            browserList.innerHTML = '<li>Empty directory</li>';
-            return;
-        }
-
-        browserList.innerHTML = data.items.map(item => {
-            const itemPath = path ? `${path}/${item.name}` : item.name;
-            const itemClass = item.type === 'dir' ? 'dir' : (item.is_txt ? 'txt' : 'file');
-            return `<li class="browser-item ${itemClass}" data-path="${escapeHtml(itemPath)}" data-type="${item.type}" data-txt="${item.is_txt}">${escapeHtml(item.name)}</li>`;
-        }).join('');
-
-        // Add click handlers
-        browserList.querySelectorAll('.browser-item').forEach(item => {
-            item.addEventListener('click', () => {
-                const itemPath = item.dataset.path;
-                const itemType = item.dataset.type;
-                const isTxt = item.dataset.txt === 'true';
-
-                if (itemType === 'dir') {
-                    loadResultsDirectory(itemPath);
-                } else if (isTxt) {
-                    loadResultFile(itemPath);
-                }
-            });
-        });
+        dbTotalResults = data.total;
+        renderDbResults(data.results);
+        updateDbPagination();
+        loadDbStats();
     } catch (e) {
-        browserList.innerHTML = '<li>Failed to load directory</li>';
+        dbResultsContainer.innerHTML = '<p class="db-results-empty">Failed to search database</p>';
     }
 }
 
-function updateBreadcrumb(path) {
-    const parts = path ? path.split('/') : [];
-    let html = '<a href="#" data-path="">results</a>';
-
-    let currentPath = '';
-    for (const part of parts) {
-        currentPath = currentPath ? `${currentPath}/${part}` : part;
-        html += ` <span>/</span> <a href="#" data-path="${escapeHtml(currentPath)}">${escapeHtml(part)}</a>`;
+function renderDbResults(results) {
+    if (results.length === 0) {
+        dbResultsContainer.innerHTML = '<p class="db-results-empty">No results found.</p>';
+        dbResultsActions.classList.add('hidden');
+        return;
     }
 
-    breadcrumb.innerHTML = html;
+    dbResultsContainer.innerHTML = results.map((result, i) => `
+        <div class="db-result-item">
+            <input type="checkbox" id="db-result-${result.id}" data-line="${escapeHtml(result.line)}">
+            <span class="db-result-text">${escapeHtml(result.line)}</span>
+        </div>
+    `).join('');
 
-    // Add click handlers
-    breadcrumb.querySelectorAll('a').forEach(link => {
-        link.addEventListener('click', (e) => {
-            e.preventDefault();
-            const linkPath = link.dataset.path;
-            resultFileView.classList.add('hidden');
-            browserList.classList.remove('hidden');
-            loadResultsDirectory(linkPath);
-        });
-    });
+    dbResultsActions.classList.remove('hidden');
 }
 
-async function loadResultFile(path) {
-    try {
-        const response = await fetch(`/results/read?path=${encodeURIComponent(path)}`);
-        const data = await response.json();
-
-        if (!response.ok) {
-            alert(`Error: ${data.error}`);
-            return;
-        }
-
-        currentResultFile = path;
-        resultLines = data.lines;
-
-        const fileName = path.split('/').pop();
-        resultFileName.textContent = fileName;
-
-        resultLinesContainer.innerHTML = data.lines.map((line, i) => `
-            <div class="line-item">
-                <input type="checkbox" id="result-line-${i + 1}" value="${i + 1}">
-                <span class="line-number">${i + 1}</span>
-                <span class="line-text">${escapeHtml(line)}</span>
-            </div>
-        `).join('');
-
-        browserList.classList.add('hidden');
-        resultFileView.classList.remove('hidden');
-    } catch (e) {
-        alert('Failed to load file');
-    }
+function updateDbPagination() {
+    const totalPages = Math.max(1, Math.ceil(dbTotalResults / dbResultsPerPage));
+    dbPageInfo.textContent = `Page ${dbCurrentPage} of ${totalPages} (${dbTotalResults} results)`;
+    dbPrevBtn.disabled = dbCurrentPage <= 1;
+    dbNextBtn.disabled = dbCurrentPage >= totalPages;
 }
 
-backToBrowserBtn.addEventListener('click', () => {
-    resultFileView.classList.add('hidden');
-    browserList.classList.remove('hidden');
-    currentResultFile = null;
+// Database search event listeners
+let dbSearchTimeout = null;
+dbSearchInput.addEventListener('input', () => {
+    clearTimeout(dbSearchTimeout);
+    dbSearchTimeout = setTimeout(() => {
+        searchDatabase(dbSearchInput.value.trim(), 1);
+    }, 300);
 });
 
-resultSelectAllBtn.addEventListener('click', () => {
-    const checkboxes = resultLinesContainer.querySelectorAll('input[type="checkbox"]');
+dbPrevBtn.addEventListener('click', () => {
+    if (dbCurrentPage > 1) {
+        searchDatabase(dbCurrentQuery, dbCurrentPage - 1);
+    }
+});
+
+dbNextBtn.addEventListener('click', () => {
+    const totalPages = Math.ceil(dbTotalResults / dbResultsPerPage);
+    if (dbCurrentPage < totalPages) {
+        searchDatabase(dbCurrentQuery, dbCurrentPage + 1);
+    }
+});
+
+dbSelectAllBtn.addEventListener('click', () => {
+    const checkboxes = dbResultsContainer.querySelectorAll('input[type="checkbox"]');
     checkboxes.forEach(cb => cb.checked = true);
 });
 
-resultUnselectAllBtn.addEventListener('click', () => {
-    const checkboxes = resultLinesContainer.querySelectorAll('input[type="checkbox"]');
+dbUnselectAllBtn.addEventListener('click', () => {
+    const checkboxes = dbResultsContainer.querySelectorAll('input[type="checkbox"]');
     checkboxes.forEach(cb => cb.checked = false);
 });
 
-resultDownloadBtn.addEventListener('click', async () => {
-    const checkboxes = resultLinesContainer.querySelectorAll('input[type="checkbox"]:checked');
-    const indices = Array.from(checkboxes).map(cb => parseInt(cb.value));
+dbDownloadBtn.addEventListener('click', async () => {
+    const checkboxes = dbResultsContainer.querySelectorAll('input[type="checkbox"]:checked');
+    const lines = Array.from(checkboxes).map(cb => cb.dataset.line);
 
-    if (indices.length === 0) {
+    if (lines.length === 0) {
         alert('Please select at least one item.');
         return;
     }
 
-    if (!currentResultFile) {
-        alert('No file selected');
-        return;
-    }
-
-    resultDownloadBtn.disabled = true;
+    dbDownloadBtn.disabled = true;
     try {
-        const response = await fetch('/results/select', {
+        const response = await fetch('/db/select', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ path: currentResultFile, indices })
+            body: JSON.stringify({ lines })
         });
         const data = await response.json();
         if (!response.ok) {
@@ -556,9 +553,10 @@ resultDownloadBtn.addEventListener('click', async () => {
     } catch (e) {
         alert('Request failed');
     } finally {
-        resultDownloadBtn.disabled = false;
+        dbDownloadBtn.disabled = false;
     }
 });
 
-// Load results directory on page load
-loadResultsDirectory();
+// Load database stats and initial results on page load
+loadDbStats();
+searchDatabase('', 1);

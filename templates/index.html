@@ -5,6 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>IRC Book Search</title>
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
     <link rel="stylesheet" href="/static/styles.css">
 </head>
 
@@ -30,6 +31,12 @@
             <div class="form-group">
                 <label for="configIdleTimeout">Idle Timeout (minutes)</label>
                 <input type="number" id="configIdleTimeout" name="idle_timeout" placeholder="20" min="1" required>
+            </div>
+            <div class="form-group checkbox-group">
+                <label>
+                    <input type="checkbox" id="configAutoConnect" name="auto_connect" checked>
+                    Auto-connect on startup
+                </label>
             </div>
             <div style="display: flex; gap: 10px;">
                 <button type="submit" class="btn">Save Configuration</button>
@@ -93,22 +100,23 @@
     </div>
 
     <div class="card">
-        <h2>Browse Old Search Results</h2>
-        <div class="breadcrumb" id="breadcrumb">
-            <a href="#" data-path="">results</a>
+        <h2>Search Saved Results</h2>
+        <div class="db-stats" id="dbStats"></div>
+        <div class="db-search">
+            <input type="text" id="dbSearchInput" placeholder="Search saved results (e.g., tolkien hobbit epub)...">
         </div>
-        <ul class="browser-list" id="browserList">
-            <li>Loading...</li>
-        </ul>
-
-        <div id="resultFileView" class="hidden">
-            <h3 id="resultFileName"></h3>
-            <div class="result-lines-container" id="resultLinesContainer"></div>
-            <br>
-            <button class="btn btn-secondary" id="backToBrowserBtn">Back to Browser</button>
-            <button class="btn" id="resultSelectAllBtn">Select All</button>
-            <button class="btn btn-secondary" id="resultUnselectAllBtn">Unselect All</button>
-            <button class="btn" id="resultDownloadBtn">Download Selected</button>
+        <div class="db-results-container" id="dbResultsContainer">
+            <p class="db-results-empty">Enter a search term or browse all results below.</p>
+        </div>
+        <div class="db-results-actions hidden" id="dbResultsActions">
+            <button class="btn" id="dbSelectAllBtn">Select All</button>
+            <button class="btn btn-secondary" id="dbUnselectAllBtn">Unselect All</button>
+            <button class="btn" id="dbDownloadBtn">Download Selected</button>
+        </div>
+        <div class="pagination" id="dbPagination">
+            <button id="dbPrevBtn" disabled>Previous</button>
+            <span id="dbPageInfo">Page 1 of 1</span>
+            <button id="dbNextBtn" disabled>Next</button>
         </div>
     </div>
 
