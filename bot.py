@@ -32,7 +32,8 @@ def parse_dcc_send(message: str) -> tuple[str, str, int, int] | None:
     try:
         parts = shlex.split(payload)
     except ValueError:
-        return None
+        # shlex fails on unquoted apostrophes (e.g. Carl's) - fall back to split
+        parts = payload.split()
     if len(parts) < 5:
         return None
     filename = parts[2]
@@ -126,8 +127,9 @@ async def dcc_receive(
         try:
             writer.close()
             await writer.wait_closed()
-        except (ConnectionResetError, BrokenPipeError, OSError):
+        except (ConnectionResetError, BrokenPipeError, OSError, RuntimeError):
             # Ignore cleanup errors - file was received
+            # RuntimeError covers "coroutine ignored GeneratorExit" when task is cancelled
             pass
 
 
@@ -139,6 +141,7 @@ class DccReceiverPlugin:
         self.last_saved_path: Path | None = None
         self.save_dir = TEMP_DIR
         self.state: BotState | None = bot.config.get("bot_state")
+        self._active_transfers: set[tuple] = set()
 
     @irc3.event(r"(?P<raw>.*)")
     def on_raw(self, raw=None, **kw):
@@ -165,20 +168,31 @@ class DccReceiverPlugin:
 
         parsed = parse_dcc_send(data)
         if not parsed:
+            if data and "DCC" in data.upper():
+                self.bot.log.warning("Failed to parse DCC message: %r", data)
             return
         filename, address, port, size = parsed
         ip = int_to_ip(int(address)) if address.isdigit() else address
 
+        # Deduplicate: irc3 fires both PRIVMSG and CTCP for the same message
+        transfer_key = (filename, ip, port, size)
+        if transfer_key in self._active_transfers:
+            self.bot.log.debug("Skipping duplicate DCC SEND: %s (already handling via another handler)", filename)
+            return
+        self._active_transfers.add(transfer_key)
+
         out_path = self._resolve_out_path(filename)
         if out_path is None:
+            self._active_transfers.discard(transfer_key)
             return
 
         self.bot.log.info(
-            "Incoming DCC SEND: %s from %s:%d (%d bytes)",
+            "Accepting DCC SEND: %s from %s:%d (%d bytes) -> %s",
             out_path.name,
             ip,
             port,
             size,
+            out_path,
         )
 
         if self.state:
@@ -198,6 +212,7 @@ class DccReceiverPlugin:
                 await self.state.set_error(str(e))
                 await self.state.set_status("connected")
         finally:
+            self._active_transfers.discard(transfer_key)
             if self.state:
                 await self.state.clear_download_progress()
             self.done.set()
@@ -227,6 +242,7 @@ class DccReceiverPlugin:
             dest = FILES_DIR / file_path.name
             if file_path != dest:
                 file_path.replace(dest)
+            self.bot.log.info("Saved file to %s", dest)
             if self.state:
                 await self.state.add_file(dest.name)
                 await self.state.set_status("connected")
