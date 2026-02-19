@@ -238,7 +238,8 @@ class DccReceiverPlugin:
                 if self.state:
                     await self.state.set_status("connected")
         else:
-            files_dir = Path(self.state.download_path) if self.state else Path("./files")
+            config = IrcConfig.load()
+            files_dir = Path(config.download_path) if config else Path("./files")
             files_dir.mkdir(parents=True, exist_ok=True)
             dest = files_dir / file_path.name
             if file_path != dest:

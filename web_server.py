@@ -57,14 +57,15 @@ def create_app(
     return app
 
 
-def _files_dir(state: BotState) -> Path:
-    return Path(state.download_path)
+def _files_dir() -> Path:
+    config = IrcConfig.load()
+    return Path(config.download_path) if config else Path("./files")
 
 
 @aiohttp_jinja2.template("index.html")
 async def index(request: web.Request) -> dict:
     state: BotState = request.app["state"]
-    files = list_downloaded_files(_files_dir(state))
+    files = list_downloaded_files(_files_dir())
     return {
         "status": state.status,
         "search_term": state.search_term,
@@ -89,7 +90,6 @@ async def ensure_connected(irc_wrapper, state: BotState, wait_for_join: bool = F
         irc_wrapper.connect(config)
         state.idle_timeout = config.idle_timeout * 60
         state.search_timeout = config.search_timeout
-        state.download_path = config.download_path
         state.touch_activity()
         await state.set_status("connected")
     except Exception as e:
@@ -147,7 +147,7 @@ async def status(request: web.Request) -> web.Response:
     state: BotState = request.app["state"]
     irc_wrapper = request.app["irc_wrapper"]
     state_dict = state.to_dict()
-    state_dict["files"] = list_downloaded_files(_files_dir(state))
+    state_dict["files"] = list_downloaded_files(_files_dir())
     state_dict["config_exists"] = IrcConfig.exists()
     state_dict["is_connected"] = irc_wrapper.is_connected()
     return web.json_response(state_dict)
@@ -221,19 +221,17 @@ async def select_lines(request: web.Request) -> web.Response:
 
 
 async def get_files(request: web.Request) -> web.Response:
-    state: BotState = request.app["state"]
-    files = list_downloaded_files(_files_dir(state))
+    files = list_downloaded_files(_files_dir())
     return web.json_response({"files": files})
 
 
 async def download_file(request: web.Request) -> web.Response:
     """Download a file from the files directory."""
-    state: BotState = request.app["state"]
     filename = request.match_info.get("filename", "")
     if not filename:
         return web.json_response({"error": "Filename required"}, status=400)
 
-    target = _safe_path(_files_dir(state), filename)
+    target = _safe_path(_files_dir(), filename)
     if target is None or not target.exists() or not target.is_file():
         return web.json_response({"error": "File not found"}, status=404)
 
@@ -247,12 +245,11 @@ async def download_file(request: web.Request) -> web.Response:
 
 async def delete_file(request: web.Request) -> web.Response:
     """Delete a file from the files directory."""
-    state: BotState = request.app["state"]
     filename = request.match_info.get("filename", "")
     if not filename:
         return web.json_response({"error": "Filename required"}, status=400)
 
-    target = _safe_path(_files_dir(state), filename)
+    target = _safe_path(_files_dir(), filename)
     if target is None or not target.exists() or not target.is_file():
         return web.json_response({"error": "File not found"}, status=404)
 
@@ -438,7 +435,6 @@ async def save_config(request: web.Request) -> web.Response:
     # Update runtime state
     request.app["state"].idle_timeout = idle_timeout * 60
     request.app["state"].search_timeout = search_timeout
-    request.app["state"].download_path = download_path
 
     return web.json_response({"success": True})
 
@@ -460,7 +456,6 @@ async def connect(request: web.Request) -> web.Response:
         # Apply settings from config and reset activity timer
         state.idle_timeout = config.idle_timeout * 60
         state.search_timeout = config.search_timeout
-        state.download_path = config.download_path
         state.touch_activity()
         await state.set_status("connected")
         return web.json_response({"success": True})
