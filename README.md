@@ -91,6 +91,10 @@ ircbot/
 └── results/          # Saved search results (created automatically)
 ```
 
+## Disclaimer
+
+This tool is an IRC client that automates search and DCC file transfers. It is intended for downloading freely available and public domain content. Users are solely responsible for ensuring their use complies with applicable copyright laws. The authors do not condone or encourage copyright infringement.
+
 ## License
 
 MIT

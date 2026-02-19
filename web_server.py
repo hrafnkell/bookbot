@@ -113,6 +113,14 @@ async def _wait_for_channel(irc_wrapper, timeout: float = 30.0) -> str | None:
     return "Timed out waiting to join channel"
 
 
+async def _send_lines(irc_wrapper, lines: list[str], delay: float) -> None:
+    """Send IRC messages with a delay between each, as a background task."""
+    for i, line in enumerate(lines):
+        if i > 0:
+            await asyncio.sleep(delay)
+        irc_wrapper.send_message(line)
+
+
 async def search(request: web.Request) -> web.Response:
     state: BotState = request.app["state"]
     irc_wrapper = request.app["irc_wrapper"]
@@ -211,11 +219,7 @@ async def select_lines(request: web.Request) -> web.Response:
     await state.set_extracted_lines(None)
     await state.set_status("connected")
 
-    import asyncio
-    for i, line in enumerate(selected):
-        if i > 0:
-            await asyncio.sleep(send_delay)
-        irc_wrapper.send_message(line)
+    asyncio.create_task(_send_lines(irc_wrapper, selected, send_delay))
 
     return web.json_response({"success": True, "count": len(selected)})
 
@@ -345,11 +349,7 @@ async def db_select_lines(request: web.Request) -> web.Response:
 
     state.touch_activity()
 
-    import asyncio
-    for i, line in enumerate(lines):
-        if i > 0:
-            await asyncio.sleep(send_delay)
-        irc_wrapper.send_message(line)
+    asyncio.create_task(_send_lines(irc_wrapper, lines, send_delay))
 
     return web.json_response({"success": True, "count": len(lines)})
 
