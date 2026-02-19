@@ -12,15 +12,14 @@ from database import add_results
 
 TEMP_DIR = Path("temp")
 RESULTS_DIR = Path("results")
-FILES_DIR = Path("files")
 
 MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB
 
 
-def setup_dirs() -> None:
+def setup_dirs(download_path: str = "./files") -> None:
     TEMP_DIR.mkdir(parents=True, exist_ok=True)
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    FILES_DIR.mkdir(parents=True, exist_ok=True)
+    Path(download_path).mkdir(parents=True, exist_ok=True)
 
 
 def parse_dcc_send(message: str) -> tuple[str, str, int, int] | None:
@@ -239,7 +238,9 @@ class DccReceiverPlugin:
                 if self.state:
                     await self.state.set_status("connected")
         else:
-            dest = FILES_DIR / file_path.name
+            files_dir = Path(self.state.download_path) if self.state else Path("./files")
+            files_dir.mkdir(parents=True, exist_ok=True)
+            dest = files_dir / file_path.name
             if file_path != dest:
                 file_path.replace(dest)
             self.bot.log.info("Saved file to %s", dest)
@@ -336,7 +337,7 @@ class IrcBotWrapper:
         self._connected = False
 
     def create_bot(self, irc_config: IrcConfig) -> irc3.IrcBot:
-        setup_dirs()
+        setup_dirs(irc_config.download_path)
         self.irc_config = irc_config
         self.channel = irc_config.channel
 

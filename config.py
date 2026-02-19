@@ -21,6 +21,7 @@ class IrcConfig:
     channel: str = DEFAULT_IRC_CHANNEL
     idle_timeout: int = 20
     search_timeout: int = 60
+    download_path: str = "./files"
     auto_connect: bool = True
 
     def save(self) -> None:
@@ -41,6 +42,7 @@ class IrcConfig:
                 channel=data.get("channel", DEFAULT_IRC_CHANNEL),
                 idle_timeout=data.get("idle_timeout", 20),
                 search_timeout=data.get("search_timeout", 60),
+                download_path=data.get("download_path", "./files"),
                 auto_connect=data.get("auto_connect", True),
             )
         except (json.JSONDecodeError, KeyError):

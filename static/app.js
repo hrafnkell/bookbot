@@ -9,14 +9,62 @@ const configPort = document.getElementById('configPort');
 const configChannel = document.getElementById('configChannel');
 const configIdleTimeout = document.getElementById('configIdleTimeout');
 const configSearchTimeout = document.getElementById('configSearchTimeout');
+const configDownloadPath = document.getElementById('configDownloadPath');
 const configAutoConnect = document.getElementById('configAutoConnect');
 const configError = document.getElementById('configError');
 const editConfigBtn = document.getElementById('editConfigBtn');
 const cancelConfigBtn = document.getElementById('cancelConfigBtn');
 const connectBtn = document.getElementById('connectBtn');
 const shutdownBtn = document.getElementById('shutdownBtn');
+const banner = document.getElementById('banner');
 
 let editingConfig = false;
+
+function dismissBanner() {
+    banner.innerHTML = '';
+    banner.classList.add('hidden');
+}
+
+function showBanner(message) {
+    const item = document.createElement('div');
+    item.className = 'banner-item';
+    item.textContent = message;
+    // First message: clear any stale content and show
+    if (banner.classList.contains('hidden')) {
+        banner.innerHTML = '';
+        banner.classList.remove('hidden');
+    }
+    banner.appendChild(item);
+}
+
+function showConfirmBanner(message, onConfirm) {
+    const item = document.createElement('div');
+    item.className = 'banner-item';
+    item.appendChild(document.createTextNode(message));
+    const actions = document.createElement('div');
+    actions.className = 'banner-actions';
+    const yes = document.createElement('button');
+    yes.textContent = 'Confirm';
+    yes.addEventListener('click', () => { dismissBanner(); onConfirm(); });
+    const no = document.createElement('button');
+    no.textContent = 'Cancel';
+    no.addEventListener('click', dismissBanner);
+    actions.appendChild(yes);
+    actions.appendChild(no);
+    item.appendChild(actions);
+    if (banner.classList.contains('hidden')) {
+        banner.innerHTML = '';
+        banner.classList.remove('hidden');
+    }
+    banner.appendChild(item);
+}
+
+banner.addEventListener('click', (e) => {
+    // Dismiss on click, but not if clicking a button inside banner-actions
+    if (!e.target.closest('.banner-actions')) {
+        dismissBanner();
+    }
+});
 
 const statusIndicator = document.getElementById('statusIndicator');
 const statusText = document.getElementById('statusText');
@@ -25,8 +73,8 @@ const searchForm = document.getElementById('searchForm');
 const searchInput = document.getElementById('searchInput');
 const searchBtn = document.getElementById('searchBtn');
 const errorDiv = document.getElementById('error');
-const progressCard = document.getElementById('progressCard');
-const downloadInfo = document.getElementById('downloadInfo');
+const headerProgress = document.getElementById('headerProgress');
+const progressText = document.getElementById('progressText');
 const progressFill = document.getElementById('progressFill');
 const linesCard = document.getElementById('linesCard');
 const linesContainer = document.getElementById('linesContainer');
@@ -141,21 +189,21 @@ function updateStatus(data) {
         errorDiv.classList.add('hidden');
     }
 
-    // Update progress
+    // Update progress in header
     if (data.status === 'downloading' && data.download_progress.filename) {
-        progressCard.classList.remove('hidden');
+        headerProgress.classList.remove('hidden');
         const progress = data.download_progress;
         const percent = progress.total > 0
             ? Math.round((progress.received / progress.total) * 100)
             : 0;
-        downloadInfo.textContent = `${progress.filename} - ${formatBytes(progress.received)} / ${formatBytes(progress.total)}`;
+        progressText.textContent = `${progress.filename} ${percent}%`;
         progressFill.style.width = percent + '%';
         // Log download progress at 25% intervals
         if (percent > 0 && percent % 25 === 0) {
             console.log(`[Download] ${progress.filename}: ${percent}%`);
         }
     } else {
-        progressCard.classList.add('hidden');
+        headerProgress.classList.add('hidden');
     }
 
     // Update lines - only re-render if lines actually changed
@@ -247,31 +295,29 @@ function renderFilesList() {
     filesNextBtn.disabled = filesCurrentPage >= totalPages;
 }
 
-async function deleteFile(filename) {
-    if (!confirm(`Delete ${filename}? This cannot be undone.`)) {
-        return;
-    }
+function deleteFile(filename) {
+    showConfirmBanner(`Delete ${filename}? This cannot be undone.`, async () => {
+        console.log(`[Files] Deleting: ${filename}`);
+        try {
+            const response = await fetch(`/files/delete/${encodeURIComponent(filename)}`, {
+                method: 'DELETE'
+            });
+            const data = await response.json();
 
-    console.log(`[Files] Deleting: ${filename}`);
-    try {
-        const response = await fetch(`/files/delete/${encodeURIComponent(filename)}`, {
-            method: 'DELETE'
-        });
-        const data = await response.json();
+            if (!response.ok) {
+                console.error(`[Files] Delete failed: ${data.error}`);
+                showBanner(data.error);
+                return;
+            }
 
-        if (!response.ok) {
-            console.error(`[Files] Delete failed: ${data.error}`);
-            alert(`Error: ${data.error}`);
-            return;
+            console.log(`[Files] Deleted: ${filename}`);
+            allFiles = allFiles.filter(f => f !== filename);
+            renderFilesList();
+        } catch (e) {
+            console.error('[Files] Delete request failed:', e);
+            showBanner('Delete request failed');
         }
-
-        console.log(`[Files] Deleted: ${filename}`);
-        allFiles = allFiles.filter(f => f !== filename);
-        renderFilesList();
-    } catch (e) {
-        console.error('[Files] Delete request failed:', e);
-        alert('Delete request failed');
-    }
+    });
 }
 
 function renderLines(lines) {
@@ -323,6 +369,7 @@ configForm.addEventListener('submit', async (e) => {
     const channel = configChannel.value.trim();
     const idle_timeout = configIdleTimeout.value.trim();
     const search_timeout = configSearchTimeout.value.trim();
+    const download_path = configDownloadPath.value.trim() || './files';
     const auto_connect = configAutoConnect.checked;
 
     console.log(`[Config] Saving: nick=${nick}, server=${server}:${port}, channel=${channel}`);
@@ -339,6 +386,7 @@ configForm.addEventListener('submit', async (e) => {
                 channel,
                 idle_timeout,
                 search_timeout,
+                download_path,
                 auto_connect
             })
         });
@@ -380,6 +428,7 @@ editConfigBtn.addEventListener('click', async () => {
             configChannel.value = data.channel || '#ebooks';
             configIdleTimeout.value = data.idle_timeout || '20';
             configSearchTimeout.value = data.search_timeout || '60';
+            configDownloadPath.value = data.download_path || './files';
             configAutoConnect.checked = data.auto_connect !== false;
         }
     } catch (e) {
@@ -426,10 +475,6 @@ connectBtn.addEventListener('click', async () => {
 });
 
 shutdownBtn.addEventListener('click', async () => {
-    if (!confirm('Shut down the IRC bot? This will stop the service.')) {
-        return;
-    }
-
     console.log('[System] Shutting down...');
     shutdownBtn.disabled = true;
     try {
@@ -437,14 +482,12 @@ shutdownBtn.addEventListener('click', async () => {
         const data = await response.json();
         if (!response.ok) {
             console.error('[System] Shutdown failed:', data.error);
-            alert(`Error: ${data.error}`);
             shutdownBtn.disabled = false;
         } else {
             console.log('[System] Shutdown initiated');
         }
     } catch (e) {
         console.error('[System] Shutdown request failed:', e);
-        alert('Shutdown request failed');
         shutdownBtn.disabled = false;
     }
 });
@@ -519,7 +562,7 @@ downloadSelectedBtn.addEventListener('click', async () => {
     const indices = Array.from(checkboxes).map(cb => parseInt(cb.value));
 
     if (indices.length === 0) {
-        alert('Please select at least one item.');
+        showBanner('Please select at least one item.');
         return;
     }
 
@@ -658,7 +701,7 @@ dbDownloadBtn.addEventListener('click', async () => {
     const lines = Array.from(checkboxes).map(cb => cb.dataset.line);
 
     if (lines.length === 0) {
-        alert('Please select at least one item.');
+        showBanner('Please select at least one item.');
         return;
     }
 
@@ -673,42 +716,39 @@ dbDownloadBtn.addEventListener('click', async () => {
         const data = await response.json();
         if (!response.ok) {
             console.error('[Database] Download failed:', data.error);
-            alert(`Error: ${data.error}`);
+            showBanner(data.error);
         } else {
             console.log(`[Database] Sent ${data.count} request(s) to IRC`);
         }
     } catch (e) {
         console.error('[Database] Request failed:', e);
-        alert('Request failed');
+        showBanner('Request failed');
     } finally {
         dbDownloadBtn.disabled = false;
     }
 });
 
-clearDbBtn.addEventListener('click', async () => {
-    if (!confirm('Are you sure you want to clear all saved results? This cannot be undone.')) {
-        return;
-    }
-
-    console.log('[Database] Clearing all results...');
-    clearDbBtn.disabled = true;
-    try {
-        const response = await fetch('/db/clear', { method: 'POST' });
-        const data = await response.json();
-        if (!response.ok) {
-            console.error('[Database] Clear failed:', data.error);
-            alert(`Error: ${data.error}`);
-        } else {
-            console.log(`[Database] Cleared ${data.deleted} results`);
-            alert(`Deleted ${data.deleted} results`);
-            refreshDbResults();
+clearDbBtn.addEventListener('click', () => {
+    showConfirmBanner('Are you sure you want to clear all saved results? This cannot be undone.', async () => {
+        console.log('[Database] Clearing all results...');
+        clearDbBtn.disabled = true;
+        try {
+            const response = await fetch('/db/clear', { method: 'POST' });
+            const data = await response.json();
+            if (!response.ok) {
+                console.error('[Database] Clear failed:', data.error);
+                showBanner(data.error);
+            } else {
+                console.log(`[Database] Cleared ${data.deleted} results`);
+                refreshDbResults();
+            }
+        } catch (e) {
+            console.error('[Database] Clear request failed:', e);
+            showBanner('Request failed');
+        } finally {
+            clearDbBtn.disabled = false;
         }
-    } catch (e) {
-        console.error('[Database] Clear request failed:', e);
-        alert('Request failed');
-    } finally {
-        clearDbBtn.disabled = false;
-    }
+    });
 });
 
 // Load database stats and initial results on page load

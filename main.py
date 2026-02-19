@@ -53,11 +53,12 @@ async def main():
     state = BotState()
     irc_wrapper = IrcBotWrapper(state)
 
-    # Auto-connect if config exists and auto_connect is enabled
+    # Load config and apply timeout settings
     config = IrcConfig.load()
     if config:
         state.idle_timeout = config.idle_timeout * 60
         state.search_timeout = config.search_timeout
+        state.download_path = config.download_path
         if config.auto_connect:
             print("Configuration found. Connecting to IRC...")
             irc_wrapper.connect(config)

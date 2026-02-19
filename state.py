@@ -24,6 +24,7 @@ class BotState:
     last_activity: float = field(default_factory=time.time)
     idle_timeout: int = 1200  # Default 20 minutes in seconds
     search_timeout: int = 60  # Default 60 seconds
+    download_path: str = "./files"
     search_started_at: float | None = None
 
     _lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)

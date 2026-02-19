@@ -16,7 +16,6 @@ from database import search_results, get_all_results, get_stats, clear_database
 from bot import extract_nick_from_line
 
 
-FILES_DIR = Path("files")
 RESULTS_DIR = Path("results")
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -58,10 +57,14 @@ def create_app(
     return app
 
 
+def _files_dir(state: BotState) -> Path:
+    return Path(state.download_path)
+
+
 @aiohttp_jinja2.template("index.html")
 async def index(request: web.Request) -> dict:
     state: BotState = request.app["state"]
-    files = list_downloaded_files(FILES_DIR)
+    files = list_downloaded_files(_files_dir(state))
     return {
         "status": state.status,
         "search_term": state.search_term,
@@ -69,9 +72,13 @@ async def index(request: web.Request) -> dict:
     }
 
 
-async def ensure_connected(irc_wrapper, state: BotState) -> str | None:
+async def ensure_connected(irc_wrapper, state: BotState, wait_for_join: bool = False) -> str | None:
     """Ensure IRC is connected, auto-reconnect if needed. Returns error message or None."""
     if irc_wrapper.is_connected():
+        if wait_for_join:
+            plugin = irc_wrapper.get_join_plugin()
+            if not plugin or not plugin.channel_users:
+                return await _wait_for_channel(irc_wrapper)
         return None
 
     config = IrcConfig.load()
@@ -80,10 +87,30 @@ async def ensure_connected(irc_wrapper, state: BotState) -> str | None:
 
     try:
         irc_wrapper.connect(config)
+        state.idle_timeout = config.idle_timeout * 60
+        state.search_timeout = config.search_timeout
+        state.download_path = config.download_path
+        state.touch_activity()
         await state.set_status("connected")
-        return None
     except Exception as e:
         return f"Failed to reconnect: {e}"
+
+    if wait_for_join:
+        return await _wait_for_channel(irc_wrapper)
+    return None
+
+
+async def _wait_for_channel(irc_wrapper, timeout: float = 30.0) -> str | None:
+    """Wait for channel NAMES to be received. Returns error message or None."""
+    elapsed = 0.0
+    interval = 0.5
+    while elapsed < timeout:
+        await asyncio.sleep(interval)
+        elapsed += interval
+        plugin = irc_wrapper.get_join_plugin()
+        if plugin and plugin.channel_users:
+            return None
+    return "Timed out waiting to join channel"
 
 
 async def search(request: web.Request) -> web.Response:
@@ -120,7 +147,7 @@ async def status(request: web.Request) -> web.Response:
     state: BotState = request.app["state"]
     irc_wrapper = request.app["irc_wrapper"]
     state_dict = state.to_dict()
-    state_dict["files"] = list_downloaded_files(FILES_DIR)
+    state_dict["files"] = list_downloaded_files(_files_dir(state))
     state_dict["config_exists"] = IrcConfig.exists()
     state_dict["is_connected"] = irc_wrapper.is_connected()
     return web.json_response(state_dict)
@@ -194,17 +221,19 @@ async def select_lines(request: web.Request) -> web.Response:
 
 
 async def get_files(request: web.Request) -> web.Response:
-    files = list_downloaded_files(FILES_DIR)
+    state: BotState = request.app["state"]
+    files = list_downloaded_files(_files_dir(state))
     return web.json_response({"files": files})
 
 
 async def download_file(request: web.Request) -> web.Response:
     """Download a file from the files directory."""
+    state: BotState = request.app["state"]
     filename = request.match_info.get("filename", "")
     if not filename:
         return web.json_response({"error": "Filename required"}, status=400)
 
-    target = _safe_path(FILES_DIR, filename)
+    target = _safe_path(_files_dir(state), filename)
     if target is None or not target.exists() or not target.is_file():
         return web.json_response({"error": "File not found"}, status=404)
 
@@ -218,11 +247,12 @@ async def download_file(request: web.Request) -> web.Response:
 
 async def delete_file(request: web.Request) -> web.Response:
     """Delete a file from the files directory."""
+    state: BotState = request.app["state"]
     filename = request.match_info.get("filename", "")
     if not filename:
         return web.json_response({"error": "Filename required"}, status=400)
 
-    target = _safe_path(FILES_DIR, filename)
+    target = _safe_path(_files_dir(state), filename)
     if target is None or not target.exists() or not target.is_file():
         return web.json_response({"error": "File not found"}, status=404)
 
@@ -285,8 +315,10 @@ async def db_select_lines(request: web.Request) -> web.Response:
     if state.status == "downloading":
         return web.json_response({"error": "Download in progress"}, status=409)
 
-    if not irc_wrapper.is_connected():
-        return web.json_response({"error": "Not connected to IRC. Please connect first."}, status=400)
+    # Auto-connect and wait for channel join if needed
+    error = await ensure_connected(irc_wrapper, state, wait_for_join=True)
+    if error:
+        return web.json_response({"error": error}, status=400)
 
     try:
         data = await request.json()
@@ -346,6 +378,7 @@ async def get_config(request: web.Request) -> web.Response:
         "channel": config.channel,
         "idle_timeout": config.idle_timeout,
         "search_timeout": config.search_timeout,
+        "download_path": config.download_path,
         "auto_connect": config.auto_connect,
     })
 
@@ -362,6 +395,7 @@ async def save_config(request: web.Request) -> web.Response:
     realname = data.get("realname", "").strip()
     server = data.get("server", DEFAULT_IRC_SERVER).strip()
     channel = data.get("channel", DEFAULT_IRC_CHANNEL).strip()
+    download_path = data.get("download_path", "./files").strip() or "./files"
     auto_connect = bool(data.get("auto_connect", True))
     try:
         idle_timeout = int(data.get("idle_timeout", 20))
@@ -396,6 +430,7 @@ async def save_config(request: web.Request) -> web.Response:
         channel=channel,
         idle_timeout=idle_timeout,
         search_timeout=search_timeout,
+        download_path=download_path,
         auto_connect=auto_connect,
     )
     config.save()
@@ -403,6 +438,7 @@ async def save_config(request: web.Request) -> web.Response:
     # Update runtime state
     request.app["state"].idle_timeout = idle_timeout * 60
     request.app["state"].search_timeout = search_timeout
+    request.app["state"].download_path = download_path
 
     return web.json_response({"success": True})
 
@@ -421,6 +457,11 @@ async def connect(request: web.Request) -> web.Response:
 
     try:
         irc_wrapper.connect(config)
+        # Apply settings from config and reset activity timer
+        state.idle_timeout = config.idle_timeout * 60
+        state.search_timeout = config.search_timeout
+        state.download_path = config.download_path
+        state.touch_activity()
         await state.set_status("connected")
         return web.json_response({"success": True})
     except Exception as e:

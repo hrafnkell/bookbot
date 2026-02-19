@@ -83,6 +83,38 @@ body {
     color: var(--ctp-subtext1);
 }
 
+.header-progress {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--ctp-surface0);
+    padding: 6px 12px;
+    border-radius: 4px;
+}
+
+.header-progress .progress-text {
+    font-size: 12px;
+    color: var(--ctp-subtext1);
+    white-space: nowrap;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.progress-bar-mini {
+    width: 100px;
+    height: 8px;
+    background: var(--ctp-surface1);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.progress-bar-mini .progress-fill {
+    height: 100%;
+    background: var(--ctp-blue);
+    transition: width 0.3s;
+}
+
 .content {
     max-width: 800px;
     margin: 0 auto;
@@ -201,6 +233,44 @@ h1, h2, h3 {
     border: 1px solid var(--ctp-red);
     border-radius: 4px;
     margin-top: 10px;
+}
+
+.banner {
+    color: var(--ctp-red);
+    padding: 10px 16px;
+    background: rgba(243, 139, 168, 0.15);
+    border-bottom: 2px solid var(--ctp-red);
+    text-align: center;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.banner-item {
+    padding: 2px 0;
+}
+
+.banner-item + .banner-item {
+    border-top: 1px solid rgba(243, 139, 168, 0.3);
+    margin-top: 4px;
+    padding-top: 6px;
+}
+
+.banner .banner-actions {
+    margin-top: 6px;
+}
+
+.banner .banner-actions button {
+    margin: 0 4px;
+    padding: 2px 12px;
+    cursor: pointer;
+    border-radius: 4px;
+    border: 1px solid var(--ctp-surface1);
+    background: var(--ctp-surface0);
+    color: var(--ctp-text);
+}
+
+.banner .banner-actions button:hover {
+    background: var(--ctp-surface1);
 }
 
 .lines-container {
