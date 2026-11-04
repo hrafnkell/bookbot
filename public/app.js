@@ -118,6 +118,7 @@ function switchTab(tabName, updateHistory = true) {
     const tabBtn = document.querySelector(`.tab[data-tab="${tabName}"]`);
     if (tabBtn) tabBtn.classList.add('active');
     document.getElementById('tab-' + tabName).classList.add('active');
+    onTabChanged(tabName);
     if (updateHistory) {
         const path = '/' + tabName;
         if (window.location.pathname !== path) {
@@ -145,10 +146,78 @@ let lastStatus = '';
 
 // Files pagination state
 let allFiles = [];
+
+// "New file" tracking for the Downloads badge. seenFiles is remembered per browser;
+// freshFiles are the ones tagged "New" while the Downloads tab is open.
+const SEEN_FILES_KEY = 'ircbook.seenFiles';
+const downloadsBadge = document.getElementById('downloadsBadge');
+const baseTitle = document.title;
+let seenFiles = loadSeenFiles(); // null until the first file list arrives on a fresh browser
+let freshFiles = new Set();
+let activeTab = null;
+
+function loadSeenFiles() {
+    try {
+        const raw = localStorage.getItem(SEEN_FILES_KEY);
+        return raw ? new Set(JSON.parse(raw)) : null;
+    } catch (e) {
+        return null;
+    }
+}
+
+function saveSeenFiles() {
+    try {
+        localStorage.setItem(SEEN_FILES_KEY, JSON.stringify([...seenFiles]));
+    } catch (e) {
+        // Private window or storage blocked: the badge still works for this visit.
+    }
+}
+
+function downloadsInView() {
+    return activeTab === 'downloads' && !document.hidden;
+}
+
+// Recount unseen files. While the Downloads tab is in view they count as seen
+// straight away and get a "New" tag instead of a badge.
+function updateDownloadsBadge() {
+    if (seenFiles === null) {
+        // First visit in this browser: what's already downloaded isn't news.
+        seenFiles = new Set(allFiles);
+        saveSeenFiles();
+    }
+    const unseen = allFiles.filter(f => !seenFiles.has(f));
+    if (unseen.length > 0 && downloadsInView()) {
+        unseen.forEach(f => { seenFiles.add(f); freshFiles.add(f); });
+        // Forget deleted files so the stored list doesn't grow forever.
+        seenFiles = new Set(allFiles.filter(f => seenFiles.has(f)));
+        saveSeenFiles();
+        renderFilesList();
+    }
+    const count = downloadsInView() ? 0 : unseen.length;
+    downloadsBadge.textContent = count > 99 ? '99+' : String(count);
+    downloadsBadge.classList.toggle('hidden', count === 0);
+    downloadsBadge.title = `${count} new file${count === 1 ? '' : 's'}`;
+    document.title = count > 0 ? `(${count}) ${baseTitle}` : baseTitle;
+}
+
+function onTabChanged(tabName) {
+    const wasDownloads = activeTab === 'downloads';
+    activeTab = tabName;
+    if (wasDownloads && tabName !== 'downloads' && freshFiles.size > 0) {
+        freshFiles = new Set();
+        renderFilesList();
+    }
+    if (tabName === 'downloads') updateDownloadsBadge();
+}
+
+document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) updateDownloadsBadge();
+});
 let filesCurrentPage = 1;
 const filesPerPage = 10;
 
 function updateStatus(data) {
+    lastStatusData = data;
     // Log status changes
     if (lastStatus && lastStatus !== data.status) {
         console.log(`[Status] ${lastStatus} → ${data.status}`);
@@ -226,6 +295,8 @@ function updateStatus(data) {
         const linesChanged = JSON.stringify(currentLines) !== JSON.stringify(data.extracted_lines);
         if (linesChanged) {
             console.log(`[Results] Received ${data.extracted_lines.length} lines`);
+            // New results (possibly from a search started in another tab): drop the old filter.
+            linesFilterInput.value = '';
             currentLines = data.extracted_lines;
             renderLines(data.extracted_lines);
         }
@@ -246,6 +317,7 @@ function updateStatus(data) {
             }
             allFiles = data.files;
             renderFilesList();
+            updateDownloadsBadge();
         }
     }
 
@@ -257,7 +329,6 @@ function updateStatus(data) {
         refreshDbResults();
     }
     lastStatus = data.status;
-    lastStatusData = data;
     updateCachedCard();
     if (lastJoinedKnown !== null && lastJoinedKnown !== isConnected) refreshNickPresence();
     lastJoinedKnown = isConnected;
@@ -265,8 +336,9 @@ function updateStatus(data) {
 
 function getFilteredFiles() {
     const searchTerm = fileSearchInput.value.toLowerCase().trim();
-    if (!searchTerm) return allFiles;
-    return allFiles.filter(f => f.toLowerCase().includes(searchTerm));
+    const matches = searchTerm ? allFiles.filter(f => f.toLowerCase().includes(searchTerm)) : allFiles;
+    // Newly downloaded files go to the top so they aren't lost on a later page.
+    return [...matches.filter(f => freshFiles.has(f)), ...matches.filter(f => !freshFiles.has(f))];
 }
 
 function renderFilesList() {
@@ -294,8 +366,9 @@ function renderFilesList() {
     // Update list
     if (pageFiles.length > 0) {
         filesList.innerHTML = pageFiles.map(f =>
-            `<li class="file-item">
+            `<li class="file-item${freshFiles.has(f) ? ' file-new' : ''}">
                 <a href="/files/download/${encodeURIComponent(f)}" download>${escapeHtml(f)}</a>
+                ${freshFiles.has(f) ? '<span class="new-tag">New</span>' : ''}
                 <button class="delete-btn" data-filename="${escapeHtml(f)}" title="Delete file">×</button>
             </li>`
         ).join('');
@@ -331,7 +404,9 @@ function deleteFile(filename) {
 
             console.log(`[Files] Deleted: ${filename}`);
             allFiles = allFiles.filter(f => f !== filename);
+            freshFiles.delete(filename);
             renderFilesList();
+            updateDownloadsBadge();
         } catch (e) {
             console.error('[Files] Delete request failed:', e);
             showBanner('Delete request failed');
@@ -340,13 +415,16 @@ function deleteFile(filename) {
 }
 
 const linesFilterInput = document.getElementById('linesFilterInput');
+const linesCount = document.getElementById('linesCount');
 
 function renderLines(lines) {
     const filter = linesFilterInput.value.toLowerCase().trim();
     const words = filter ? filter.split(/\s+/) : [];
+    let shown = 0;
     linesContainer.innerHTML = lines.map((line, i) => {
         const lower = line.toLowerCase();
         const visible = words.every(w => lower.includes(w));
+        if (visible) shown++;
         return `
         <label class="line-item${visible ? '' : ' hidden'}">
             <input type="checkbox" id="line-${i + 1}" value="${i + 1}">
@@ -354,6 +432,12 @@ function renderLines(lines) {
             <span class="line-text">${escapeHtml(line)}</span>
         </label>`;
     }).join('');
+
+    const term = lastStatusData && lastStatusData.search_term ? ` for "${lastStatusData.search_term}"` : '';
+    const total = `${lines.length} result${lines.length === 1 ? '' : 's'}`;
+    linesCount.textContent = shown === lines.length
+        ? `Found ${total}${term}.`
+        : `Showing ${shown} of ${total}${term}.`;
 }
 
 linesFilterInput.addEventListener('input', () => {
@@ -555,6 +639,8 @@ searchForm.addEventListener('submit', async (e) => {
     if (!term) return;
 
     console.log(`[Search] Searching IRC for: "${term}"`);
+    // The old filter was for the previous results; start the new ones unfiltered.
+    linesFilterInput.value = '';
     errorDiv.classList.add('hidden');
     searchBtn.disabled = true;
 

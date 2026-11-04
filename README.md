@@ -127,10 +127,11 @@ The file formats are identical to the Python version, so an existing
    without waiting for IRC.
 4. Press Enter (or **Search**) for fresh results. The app connects if needed,
    waits until it has joined the channel, and sends `@search <term>`.
-5. When the results arrive, tick the lines you want and click **Download
+5. Results and downloads usually take a few seconds. That's just how irc works. Be patient, don't spam the channel.
+6. When the results arrive, tick the lines you want and click **Download
    Selected**. Each line is sent to the channel with a 15 second gap so the
    serving bots are not flooded.
-6. Finished files appear on the Downloads tab, where they can be downloaded to
+7. Finished files appear on the Downloads tab, where they can be downloaded to
    your browser or deleted.
 
 The Saved Results tab searches every result line the app has ever received,

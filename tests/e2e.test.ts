@@ -19,6 +19,15 @@ const { IrcBotWrapper } = await import("../src/irc.ts");
 const { initDatabase } = await import("../src/database.ts");
 const { createServer } = await import("../src/server.ts");
 
+// What the search bot puts above the results; it must not reach the UI.
+const RESULT_HEADER = [
+  "Search results from SearchOok v3.0, for: children of time",
+  "Searched 12 lists for \"children of time\" , found 2 matches. Enjoy!",
+  "This list includes results from all online lists.",
+  "For easier searching, use @find or @locator.",
+  "",
+  "Results:",
+];
 const RESULT_LINES = ["!Oatmeal Adrian Tchaikovsky - Children of Time.epub  ::INFO:: 1.1MB", "!peapod Carl's Book.epub  ::INFO:: 2MB"];
 const EPUB_BYTES = Buffer.from("PK\x03\x04 fake epub payload ".repeat(2000));
 
@@ -73,8 +82,11 @@ beforeAll(async () => {
         } else if (line.startsWith("PRIVMSG #ebooks :@search nothing")) {
           sock.write(`:Search!s@h NOTICE ${nick} :\x031,9<<SearchBot>> Your search for "\x0312,09nothing\x0301,09" has been accepted. Searching...\r\n`);
           setTimeout(() => sock.write(`:Search!s@h NOTICE ${nick} :\x031,9<<SearchBot>> Sorry, your search for "\x0312,09nothing\x0301,09" returned no matches. Search took 1.24 seconds.\r\n`), 100);
+        } else if (line.startsWith("PRIVMSG #ebooks :@search headeronly")) {
+          const zip = zipSync({ "SearchBot_results_for__headeronly.txt": strToU8(RESULT_HEADER.join("\r\n") + "\r\n") });
+          dccSend("SearchBot_results_for__headeronly.txt.zip", Buffer.from(zip));
         } else if (line.startsWith("PRIVMSG #ebooks :@search ")) {
-          const zip = zipSync({ "SearchBot_results_for__test.txt": strToU8(RESULT_LINES.join("\r\n") + "\r\n") });
+          const zip = zipSync({ "SearchBot_results_for__test.txt": strToU8([...RESULT_HEADER, ...RESULT_LINES].join("\r\n") + "\r\n") });
           dccSend("SearchBot_results_for__test.txt.zip", Buffer.from(zip));
         } else if (line.startsWith("PRIVMSG #ebooks :!peapod ")) {
           dccSend("Carl's_Book.epub", EPUB_BYTES);
@@ -192,6 +204,21 @@ test("a 'no matches' notice from the search bot ends the search with a readable 
   expect(s.error).toBe('<<SearchBot>> Sorry, your search for "nothing" returned no matches. Search took 1.24 seconds.');
 
   // Restore the results state for the following tests
+  const again = new FormData();
+  again.append("term", "children of time");
+  expect((await fetch(`${baseUrl}/api/search`, { method: "POST", body: again })).status).toBe(200);
+  await waitFor((s) => s.status === "lines_ready");
+});
+
+test("a result file with no download lines ends the search with 'No results found'", async () => {
+  const form = new FormData();
+  form.append("term", "headeronly");
+  expect((await fetch(`${baseUrl}/api/search`, { method: "POST", body: form })).status).toBe(200);
+  const s = await waitFor((s) => s.status === "connected" && !!s.error);
+  expect(s.error).toBe('No results found for "headeronly"');
+  expect(s.extracted_lines).toBeNull();
+
+  // Leave the earlier results in place for the selection tests that follow.
   const again = new FormData();
   again.append("term", "children of time");
   expect((await fetch(`${baseUrl}/api/search`, { method: "POST", body: again })).status).toBe(200);

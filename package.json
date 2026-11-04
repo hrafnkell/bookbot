@@ -1,6 +1,6 @@
 {
   "name": "ircbook",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "Web UI for searching and downloading ebooks over IRC DCC, built on Bun",
   "type": "module",
   "private": true,

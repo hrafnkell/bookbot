@@ -1,5 +1,15 @@
 # Changelog
 
+## [2.2.0] - 2026-11-04
+
+### Added
+- **New-downloads badge**: the Downloads tab shows how many finished files you haven't seen yet, and the browser tab title gets a "(N)" prefix. New files are listed first with a "New" tag. Seen files are remembered per browser.
+- **Result count**: search results show how many were found, or how many match the filter.
+
+### Changed
+- Search results only list lines starting with `!` (the header lines in the results file are dropped). A results file with no such lines reports "No results found".
+- The results filter is cleared when a new search starts.
+
 ## [2.1.0] - 2026-11-04
 
 ### Added

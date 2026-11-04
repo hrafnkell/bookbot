@@ -364,6 +364,37 @@ input[type="search"] {
     border-color: var(--ctp-red);
 }
 
+/* Unseen-downloads badge on the Downloads tab */
+.tab-badge {
+    display: inline-block;
+    min-width: 18px;
+    margin-left: 6px;
+    padding: 1px 6px;
+    border-radius: 9px;
+    background: var(--ctp-peach);
+    color: var(--ctp-crust);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 16px;
+    text-align: center;
+    vertical-align: 1px;
+}
+
+.tab-badge.hidden {
+    display: none;
+}
+
+.new-tag {
+    flex-shrink: 0;
+    padding: 1px 8px;
+    border-radius: 9px;
+    background: rgba(250, 179, 135, 0.15);
+    color: var(--ctp-peach);
+    border: 1px solid var(--ctp-peach);
+    font-size: 11px;
+    font-weight: 600;
+}
+
 .btn {
     padding: 10px 20px;
     background: var(--ctp-green);

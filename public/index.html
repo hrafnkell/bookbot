@@ -33,7 +33,7 @@
     <main class="content">
     <div class="tabs">
         <button class="tab active" data-tab="search">Search</button>
-        <button class="tab" data-tab="downloads">Downloads</button>
+        <button class="tab" data-tab="downloads">Downloads<span class="tab-badge hidden" id="downloadsBadge"></span></button>
         <button class="tab" data-tab="saved">Saved<span class="tab-long"> Results</span></button>
         <button class="tab" data-tab="config">Config</button>
         <button class="tab" data-tab="log">Log</button>
@@ -64,6 +64,7 @@
 
         <div class="card hidden" id="linesCard">
             <h2>Select Lines to Download</h2>
+            <div class="file-count" id="linesCount"></div>
             <div class="file-search">
                 <input type="text" id="linesFilterInput" placeholder="Filter results...">
             </div>

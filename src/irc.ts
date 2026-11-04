@@ -321,10 +321,16 @@ export class IrcBotWrapper {
         return;
       }
       const text = await Bun.file(txtPath).text();
-      const lines = text.split(/\r?\n/);
-      if (lines.at(-1) === "") lines.pop();
+      // Keep only the download commands ("!nick file"). The header the search bot
+      // puts at the top of the file (search term, result count, instructions) is dropped.
+      const lines = text.split(/\r?\n/).map((l) => l.trim()).filter((l) => l.startsWith("!"));
       const inserted = addResults(lines, this.state.searchTerm);
-      log.info(`Results: ${lines.length} lines, ${inserted} new saved to database`);
+      log.info(`Results: ${lines.length} download lines, ${inserted} new saved to database`);
+      if (lines.length === 0) {
+        this.state.setError(`No results found for "${this.state.searchTerm ?? ""}"`);
+        this.state.setStatus("connected");
+        return;
+      }
       this.state.setExtractedLines(lines);
       this.state.setStatus("lines_ready");
       return;
