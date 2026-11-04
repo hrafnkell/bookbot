@@ -5,6 +5,7 @@
 ### Added
 - **Saved matches while typing**: the Search tab shows matching saved results as you type, ready to download; Enter still runs a fresh IRC search.
 - **Nick presence colours**: in saved results the serving bot's nick is green when it is in the channel, red when it is not and grey while disconnected. Colours refresh in place via `POST /api/presence`, and `/db/search` results now include `nick` and `in_channel`.
+- **Prebuilt Windows executable** on the GitHub release page, with download-and-run instructions in the README. The Windows binary opens the web UI in the browser when started (`IRCBOOK_NO_BROWSER=1` turns this off).
 - **Random first-run identity**: before a config is saved, the Config tab is pre-filled with a random nickname and username.
 - README screenshots.
 

@@ -1,4 +1,5 @@
 import { mkdirSync } from "node:fs";
+import { basename } from "node:path";
 import { BotState } from "./state.ts";
 import { IrcBotWrapper } from "./irc.ts";
 import { loadConfig } from "./config.ts";
@@ -48,7 +49,20 @@ function shutdown(reason: string) {
 }
 
 const server = createServer({ state, irc, sendDelay: SEND_DELAY, port: WEB_PORT, onShutdown: () => shutdown("web request") });
-log.info(`Web server running at http://localhost:${server.port}`);
+const appUrl = `http://localhost:${server.port}`;
+log.info(`Web server running at ${appUrl}`);
+
+// The Windows binary is usually started by double-clicking it, so open the UI for the user.
+// Running from source (`bun start`) or setting IRCBOOK_NO_BROWSER skips this.
+const isCompiledBinary = !/^bun(\.exe)?$/i.test(basename(process.execPath));
+if (process.platform === "win32" && isCompiledBinary && !process.env.IRCBOOK_NO_BROWSER) {
+  log.info("Opening the web UI in your browser. Close this window to stop the app.");
+  try {
+    Bun.spawn(["cmd", "/c", "start", "", appUrl], { stdout: "ignore", stderr: "ignore" });
+  } catch (err) {
+    log.warn("Could not open the browser:", (err as Error).message);
+  }
+}
 
 const checker = setInterval(() => {
   if (state.isSearchTimedOut()) {

@@ -22,7 +22,25 @@ is still in the git history (everything up to commit `e2eb0d2`).
   <img src="docs/screenshots/mobile-config.png" alt="First-run configuration on a phone, with a random nickname filled in" width="260">
 </p>
 
-## Quick start
+## Windows: download and run (no install)
+
+If you don't want to install Bun, grab the prebuilt Windows executable:
+
+1. Download **`ircbook-windows-x64.exe`** from the
+   [latest release](https://github.com/hrafnkell/bookbot/releases/latest)
+   ([direct link](https://github.com/hrafnkell/bookbot/releases/latest/download/ircbook-windows-x64.exe)).
+2. Put it in a folder of its own, for example `Documents\ircbook`. Your settings,
+   saved results and downloaded books are stored next to it.
+3. Double-click it. A console window opens and your browser opens
+   <http://localhost:8044>. Fill in the Config tab and start searching.
+4. To stop the app, close the console window or click **Shutdown** in the page.
+
+The executable isn't code-signed, so the first time Windows SmartScreen may say
+"Windows protected your PC". Click **More info**, then **Run anyway**. Windows
+Firewall may also ask whether the app can use the network: allowing **private
+networks** lets you open it from your phone, and it works on the same PC either way.
+
+## Quick start (from source)
 
 1. Install Bun (1.2.17 or newer):
 
@@ -61,6 +79,10 @@ restarts on file changes.
 bun run build        # dist/ircbook for this machine
 bun run build:all    # Linux x64/arm64, macOS arm64/x64, Windows x64 into dist/
 ```
+
+The Windows build opens the browser on start; set `IRCBOOK_NO_BROWSER=1` to
+skip that. To publish a release, attach `dist/ircbook-windows-x64.exe` (and any
+other builds) to a GitHub release.
 
 The binary embeds the Bun runtime plus the web UI and is roughly 95 MB. It needs
 nothing else installed. Copy it anywhere and run it:
