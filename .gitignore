@@ -1,40 +1,23 @@
-# Byte-compiled / optimized / DLL files
-__pycache__/
-*.py[cod]
-*$py.class
-
-# Virtual environments
-.venv/
-venv/
-ENV/
-
-# Distribution / packaging
-build/
+# Dependencies and build output
+node_modules/
 dist/
-*.egg-info/
-.eggs/
 
-# Test / coverage
-.pytest_cache/
-.coverage
-htmlcov/
-
-# Logs and local data
+# Logs
 *.log
 
 # OS / editor
 .DS_Store
 Thumbs.db
 
-# Project-specific outputs
+# Runtime data (user-specific)
 results/
 temp/
 files/
-
-# IRC configuration (user-specific)
 irc_config.json
-
-# SQLite database (runtime)
 results.db
+results.db-journal
+results.db-wal
+results.db-shm
 
-.airc_pkg/
+# Local builds and binaries
+*.exe

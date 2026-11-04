@@ -1,5 +1,38 @@
 # Changelog
 
+## [2.1.0] - 2026-11-04
+
+### Added
+- **Saved matches while typing**: the Search tab shows matching saved results as you type, ready to download; Enter still runs a fresh IRC search.
+- **Nick presence colours**: in saved results the serving bot's nick is green when it is in the channel, red when it is not and grey while disconnected. Colours refresh in place via `POST /api/presence`, and `/db/search` results now include `nick` and `in_channel`.
+- **Random first-run identity**: before a config is saved, the Config tab is pre-filled with a random nickname and username.
+- README screenshots.
+
+### Changed
+- **Mobile layout**: the header, tabs, forms, result lists and buttons adapt to phone screens; whole result rows are tappable and inputs no longer trigger zoom on iOS.
+
+### Fixed
+- Saving the config on first run failed because the idle and search timeout fields were empty; they are now filled with the defaults.
+- Saved result lines containing quotes were truncated when sent for download.
+
+## [2.0.0] - 2026-10-10
+
+### Changed
+- **Rewritten in TypeScript on Bun**: replaces Python, aiohttp, jinja2 and irc3 with `Bun.serve`, `bun:sqlite` and irc-framework. No interpreter or virtualenv is needed.
+- **Standalone executables**: `bun run build` produces a single binary with the web UI embedded; `bun run build:all` cross-compiles for Linux, macOS and Windows.
+- **Data directory**: runtime data stays in the working directory, or in `$IRCBOOK_DATA` when set. `irc_config.json` and `results.db` keep the same format as the Python version.
+- **Search endpoint** moved from `POST /search` to `POST /api/search`; `GET /search` now serves the UI like the other tab paths.
+- The active tab is selected client-side from the URL instead of being rendered server-side.
+
+### Fixed
+- Searches sent immediately after (re)connecting were silently lost: the app now waits until it has joined the channel before sending, and reports an error instead of queueing a message the connection cannot deliver.
+- Disconnecting (idle timeout or the Disconnect button) could leave a second, orphaned IRC session holding the nick because the IRC library reconnected on its own. Auto-reconnect is disabled and the old connection is torn down explicitly.
+- `DCC SEND` filenames containing spaces or apostrophes are parsed correctly.
+
+### Added
+- **Log tab**: the web UI tails the server's activity log (timestamps, levels, filter, follow mode) via `GET /api/log`, so IRC events, search bot replies and transfer errors can be followed without the terminal. Search bot "no matches" notices now end the search with the bot's message instead of a timeout.
+- End-to-end test suite that runs a fake IRC server and DCC sender on localhost (`bun test`).
+
 ## [Unreleased]
 
 ### Added

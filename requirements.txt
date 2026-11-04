@@ -1,4 +1,0 @@
-irc3
-aiohttp
-aiohttp-jinja2
-jinja2

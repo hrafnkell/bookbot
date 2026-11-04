@@ -1,0 +1,30 @@
+{
+  "name": "ircbook",
+  "version": "2.1.0",
+  "description": "Web UI for searching and downloading ebooks over IRC DCC, built on Bun",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "bun run src/main.ts",
+    "dev": "DEBUG=1 bun --watch src/main.ts",
+    "test": "bun test",
+    "typecheck": "bunx tsc --noEmit",
+    "build": "bun build --compile --minify src/main.ts --outfile dist/ircbook",
+    "build:all": "bun run build:linux-x64 && bun run build:linux-arm64 && bun run build:mac-arm64 && bun run build:mac-x64 && bun run build:windows-x64",
+    "build:linux-x64": "bun build --compile --minify --target=bun-linux-x64 src/main.ts --outfile dist/ircbook-linux-x64",
+    "build:linux-arm64": "bun build --compile --minify --target=bun-linux-arm64 src/main.ts --outfile dist/ircbook-linux-arm64",
+    "build:mac-arm64": "bun build --compile --minify --target=bun-darwin-arm64 src/main.ts --outfile dist/ircbook-mac-arm64",
+    "build:mac-x64": "bun build --compile --minify --target=bun-darwin-x64 src/main.ts --outfile dist/ircbook-mac-x64",
+    "build:windows-x64": "bun build --compile --minify --target=bun-windows-x64 src/main.ts --outfile dist/ircbook-windows-x64.exe"
+  },
+  "dependencies": {
+    "fflate": "^0.8.3",
+    "irc-framework": "^4.14.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.2"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}

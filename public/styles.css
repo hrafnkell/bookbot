@@ -172,8 +172,14 @@ h1, h2, h3 {
     gap: 10px;
 }
 
-.search-form input[type="text"] {
+input[type="search"] {
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.search-form input {
     flex: 1;
+    min-width: 0;
     padding: 12px;
     background: var(--ctp-surface0);
     border: 1px solid var(--ctp-surface1);
@@ -182,12 +188,12 @@ h1, h2, h3 {
     color: var(--ctp-text);
 }
 
-.search-form input[type="text"]:focus {
+.search-form input:focus {
     outline: none;
     border-color: var(--ctp-mauve);
 }
 
-.search-form input[type="text"]::placeholder {
+.search-form input::placeholder {
     color: var(--ctp-overlay0);
 }
 
@@ -282,6 +288,7 @@ h1, h2, h3 {
 }
 
 .line-item {
+    cursor: pointer;
     display: flex;
     align-items: center;
     padding: 8px 12px;
@@ -712,6 +719,7 @@ h1, h2, h3 {
 }
 
 .db-result-item {
+    cursor: pointer;
     display: flex;
     align-items: flex-start;
     padding: 10px 12px;
@@ -741,6 +749,32 @@ h1, h2, h3 {
     color: var(--ctp-text);
 }
 
+.nick {
+    font-weight: 600;
+}
+
+.nick-in {
+    color: var(--ctp-green);
+}
+
+.nick-out {
+    color: var(--ctp-red);
+}
+
+.nick-unknown {
+    color: var(--ctp-subtext0);
+}
+
+.cached-hint {
+    color: var(--ctp-subtext0);
+    font-size: 14px;
+    margin-bottom: 10px;
+}
+
+#cachedCard .db-results-container {
+    margin-bottom: 0;
+}
+
 .db-results-actions {
     display: flex;
     gap: 10px;
@@ -758,6 +792,18 @@ h1, h2, h3 {
     margin: 0;
 }
 
+.config-title {
+    margin-top: 0;
+    margin-bottom: 8px;
+}
+
+.actions-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 15px;
+}
+
 .btn-danger {
     background: var(--ctp-red);
     color: var(--ctp-crust);
@@ -772,6 +818,52 @@ h1, h2, h3 {
     font-size: 12px;
 }
 
+/* Tabs */
+.tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 0;
+}
+
+.tab {
+    flex: 1;
+    padding: 10px 20px;
+    background: var(--ctp-surface0);
+    color: var(--ctp-subtext0);
+    border: 1px solid var(--ctp-surface1);
+    border-bottom: none;
+    border-radius: 8px 8px 0 0;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: background 0.15s, color 0.15s;
+}
+
+.tab:hover {
+    background: var(--ctp-surface1);
+    color: var(--ctp-text);
+}
+
+.tab.active {
+    background: var(--ctp-mantle);
+    color: var(--ctp-mauve);
+    border-color: var(--ctp-surface0);
+}
+
+.tab-panel {
+    display: none;
+}
+
+.tab-panel.active {
+    display: block;
+}
+
+.tab-panel > .card:first-child {
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+    margin-top: 0;
+}
+
 #searchTermDisplay {
     color: var(--ctp-subtext0);
     font-size: 14px;
@@ -780,6 +872,320 @@ h1, h2, h3 {
 
 #searchTermDisplay:empty {
     display: none;
+}
+
+/* Activity log */
+.log-controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.log-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--ctp-subtext0);
+    cursor: pointer;
+    user-select: none;
+}
+
+.log-toggle input[type="checkbox"] {
+    margin: 0;
+    accent-color: var(--ctp-mauve);
+}
+
+.log-container {
+    height: 60vh;
+    min-height: 240px;
+    overflow-y: auto;
+    border: 1px solid var(--ctp-surface1);
+    border-radius: 4px;
+    background: var(--ctp-base);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12.5px;
+    line-height: 1.5;
+    padding: 6px 0;
+}
+
+.log-line {
+    display: flex;
+    gap: 10px;
+    padding: 1px 12px;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.log-line:hover {
+    background: var(--ctp-surface0);
+}
+
+.log-time {
+    color: var(--ctp-overlay1);
+    flex-shrink: 0;
+}
+
+.log-level {
+    flex-shrink: 0;
+    width: 5ch;
+    font-weight: 600;
+}
+
+.log-msg {
+    flex: 1;
+    min-width: 0;
+}
+
+.log-line.debug .log-level { color: var(--ctp-overlay0); }
+.log-line.debug .log-msg { color: var(--ctp-subtext0); }
+.log-line.info .log-level { color: var(--ctp-blue); }
+.log-line.warn .log-level { color: var(--ctp-yellow); }
+.log-line.warn .log-msg { color: var(--ctp-yellow); }
+.log-line.error .log-level { color: var(--ctp-red); }
+.log-line.error .log-msg { color: var(--ctp-red); }
+
+/* Phones and narrow windows */
+@media (max-width: 640px) {
+    .site-header {
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 8px 12px;
+    }
+
+    .site-header h1 {
+        font-size: 1.1rem;
+    }
+
+    .header-controls {
+        flex: 1 1 100%;
+        min-width: 0;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .site-header .status-bar {
+        flex: 1 1 0;
+        min-width: 0;
+        gap: 8px;
+        padding: 6px 10px;
+    }
+
+    .site-header #statusText {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .connect-btn,
+    .site-header .btn-small {
+        padding: 8px 14px;
+        font-size: 13px;
+    }
+
+    .header-progress {
+        order: 10;
+        flex: 1 1 100%;
+        min-width: 0;
+    }
+
+    .header-progress .progress-text {
+        flex: 1;
+        min-width: 0;
+        max-width: none;
+    }
+
+    .banner {
+        padding: 10px 12px;
+        font-size: 14px;
+    }
+
+    .content {
+        padding: 12px 8px;
+    }
+
+    .card {
+        padding: 14px 12px;
+        margin-bottom: 12px;
+    }
+
+    .card h2 {
+        font-size: 1.2rem;
+        margin-top: 0;
+    }
+
+    .card-header {
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+
+    /* Tabs: shorter labels, no wrapping, scroll sideways if still too wide */
+    .tabs {
+        gap: 2px;
+        overflow-x: auto;
+        scrollbar-width: none;
+    }
+
+    .tabs::-webkit-scrollbar {
+        display: none;
+    }
+
+    .tab {
+        flex: 1 0 auto;
+        padding: 10px 8px;
+        font-size: 13px;
+        white-space: nowrap;
+    }
+
+    .tab-long {
+        display: none;
+    }
+
+    /* 16px stops iOS Safari zooming in when an input gets focus */
+    .search-form input,
+    .file-search input,
+    .db-search input,
+    .config-form input {
+        font-size: 16px;
+    }
+
+    .search-form button {
+        padding: 12px 16px;
+    }
+
+    .lines-container,
+    .db-results-container {
+        max-height: 55vh;
+    }
+
+    .line-item {
+        padding: 10px 8px;
+    }
+
+    .line-number {
+        min-width: 24px;
+        font-size: 12px;
+    }
+
+    .line-item input[type="checkbox"],
+    .db-result-item input[type="checkbox"] {
+        width: 18px;
+        height: 18px;
+        flex-shrink: 0;
+    }
+
+    .line-item input[type="checkbox"] {
+        margin-right: 8px;
+    }
+
+    .db-result-item {
+        padding: 10px 8px;
+    }
+
+    .db-result-item input[type="checkbox"] {
+        margin-top: 0;
+    }
+
+    .db-result-text {
+        font-size: 12px;
+    }
+
+    /* Action buttons share the row evenly */
+    .actions-row .btn,
+    .db-results-actions .btn {
+        flex: 1 1 0;
+        padding: 10px 8px;
+        min-height: 44px;
+    }
+
+    .db-results-actions {
+        flex-wrap: wrap;
+    }
+
+    .files-list li {
+        padding: 6px 0;
+    }
+
+    .file-item {
+        gap: 8px;
+    }
+
+    .file-item a {
+        word-break: break-word;
+        padding: 6px 0;
+    }
+
+    .delete-btn {
+        min-width: 40px;
+        min-height: 40px;
+        flex-shrink: 0;
+    }
+
+    .pagination {
+        gap: 8px;
+    }
+
+    .pagination span {
+        flex: 1;
+        text-align: center;
+        font-size: 13px;
+    }
+
+    .pagination button {
+        padding: 10px 14px;
+    }
+
+    /* Config: wide fields get a row each, small number fields share a row */
+    .config-form .form-row {
+        flex-wrap: wrap;
+    }
+
+    .config-form .form-row .form-group {
+        flex: 1 1 100%;
+    }
+
+    .config-form .form-row .form-group-small {
+        flex: 1 1 0;
+        min-width: 0;
+    }
+
+    .config-form .form-actions {
+        flex: 1 1 100%;
+    }
+
+    .config-form .form-actions .btn {
+        flex: 1;
+        min-height: 44px;
+    }
+
+    .config-form input {
+        padding: 10px;
+    }
+
+    .config-form .checkbox-group input[type="checkbox"] {
+        width: 18px;
+        height: 18px;
+    }
+
+    .log-controls {
+        gap: 10px;
+    }
+
+    .log-container {
+        height: 65vh;
+        font-size: 11.5px;
+    }
+
+    .log-line {
+        flex-wrap: wrap;
+        column-gap: 8px;
+        row-gap: 0;
+        padding: 2px 8px;
+    }
+
+    .log-msg {
+        flex-basis: 100%;
+    }
 }
 
 /* Scrollbar styling */

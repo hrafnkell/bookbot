@@ -1,5 +1,4 @@
 // Config elements
-const configCard = document.getElementById('configCard');
 const configForm = document.getElementById('configForm');
 const configNick = document.getElementById('configNick');
 const configUsername = document.getElementById('configUsername');
@@ -10,22 +9,19 @@ const configChannel = document.getElementById('configChannel');
 const configIdleTimeout = document.getElementById('configIdleTimeout');
 const configSearchTimeout = document.getElementById('configSearchTimeout');
 const configDownloadPath = document.getElementById('configDownloadPath');
+const configMaxFileSize = document.getElementById('configMaxFileSize');
 const configAutoConnect = document.getElementById('configAutoConnect');
 const configError = document.getElementById('configError');
-const editConfigBtn = document.getElementById('editConfigBtn');
-const cancelConfigBtn = document.getElementById('cancelConfigBtn');
 const connectBtn = document.getElementById('connectBtn');
 const shutdownBtn = document.getElementById('shutdownBtn');
 const banner = document.getElementById('banner');
-
-let editingConfig = false;
 
 function dismissBanner() {
     banner.innerHTML = '';
     banner.classList.add('hidden');
 }
 
-function showBanner(message) {
+function showBanner(message, autoDismissMs = 3000) {
     const item = document.createElement('div');
     item.className = 'banner-item';
     item.textContent = message;
@@ -35,6 +31,9 @@ function showBanner(message) {
         banner.classList.remove('hidden');
     }
     banner.appendChild(item);
+    if (autoDismissMs > 0) {
+        setTimeout(dismissBanner, autoDismissMs);
+    }
 }
 
 function showConfirmBanner(message, onConfirm) {
@@ -104,8 +103,37 @@ const dbNextBtn = document.getElementById('dbNextBtn');
 const dbPageInfo = document.getElementById('dbPageInfo');
 
 let currentLines = [];
+let lastStatusData = null;
+let lastJoinedKnown = null;
 let isConnected = false;
-let configExists = false;
+let configExists = null; // null = unknown (initial state)
+
+// Tab switching
+const VALID_TABS = ['search', 'downloads', 'saved', 'config', 'log'];
+
+function switchTab(tabName, updateHistory = true) {
+    if (!VALID_TABS.includes(tabName)) tabName = 'search';
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    const tabBtn = document.querySelector(`.tab[data-tab="${tabName}"]`);
+    if (tabBtn) tabBtn.classList.add('active');
+    document.getElementById('tab-' + tabName).classList.add('active');
+    if (updateHistory) {
+        const path = '/' + tabName;
+        if (window.location.pathname !== path) {
+            history.pushState({ tab: tabName }, '', path);
+        }
+    }
+}
+
+document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => switchTab(tab.dataset.tab));
+});
+
+window.addEventListener('popstate', () => {
+    const path = window.location.pathname.replace(/^\//, '') || 'search';
+    switchTab(path, false);
+});
 
 // Database search state
 let dbCurrentPage = 1;
@@ -127,27 +155,14 @@ function updateStatus(data) {
     }
 
     // Update config and connection state
+    const prevConfigExists = configExists;
     configExists = data.config_exists;
     isConnected = data.is_connected;
 
-    // Show/hide config card (show if no config OR editing)
-    if (!configExists || editingConfig) {
-        configCard.classList.remove('hidden');
-        // Show cancel button only if we are editing an existing config
-        if (configExists) {
-            cancelConfigBtn.classList.remove('hidden');
-        } else {
-            cancelConfigBtn.classList.add('hidden');
-        }
-    } else {
-        configCard.classList.add('hidden');
-    }
-
-    // Show/hide edit config button (only show if config exists)
-    if (configExists) {
-        editConfigBtn.classList.remove('hidden');
-    } else {
-        editConfigBtn.classList.add('hidden');
+    // Auto-switch to config tab on first load if no config exists
+    if (!configExists && prevConfigExists === null) {
+        switchTab('config');
+        loadConfigIntoForm();
     }
 
     // Update connect button
@@ -242,6 +257,10 @@ function updateStatus(data) {
         refreshDbResults();
     }
     lastStatus = data.status;
+    lastStatusData = data;
+    updateCachedCard();
+    if (lastJoinedKnown !== null && lastJoinedKnown !== isConnected) refreshNickPresence();
+    lastJoinedKnown = isConnected;
 }
 
 function getFilteredFiles() {
@@ -320,15 +339,26 @@ function deleteFile(filename) {
     });
 }
 
+const linesFilterInput = document.getElementById('linesFilterInput');
+
 function renderLines(lines) {
-    linesContainer.innerHTML = lines.map((line, i) => `
-        <div class="line-item">
+    const filter = linesFilterInput.value.toLowerCase().trim();
+    const words = filter ? filter.split(/\s+/) : [];
+    linesContainer.innerHTML = lines.map((line, i) => {
+        const lower = line.toLowerCase();
+        const visible = words.every(w => lower.includes(w));
+        return `
+        <label class="line-item${visible ? '' : ' hidden'}">
             <input type="checkbox" id="line-${i + 1}" value="${i + 1}">
             <span class="line-number">${i + 1}</span>
             <span class="line-text">${escapeHtml(line)}</span>
-        </div>
-    `).join('');
+        </label>`;
+    }).join('');
 }
+
+linesFilterInput.addEventListener('input', () => {
+    renderLines(currentLines);
+});
 
 function formatBytes(bytes) {
     if (bytes === 0) return '0 B';
@@ -341,7 +371,8 @@ function formatBytes(bytes) {
 function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
-    return div.innerHTML;
+    // innerHTML leaves quotes alone; escape them too so the result is safe inside attributes.
+    return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 async function fetchStatus() {
@@ -370,11 +401,12 @@ configForm.addEventListener('submit', async (e) => {
     const idle_timeout = configIdleTimeout.value.trim();
     const search_timeout = configSearchTimeout.value.trim();
     const download_path = configDownloadPath.value.trim() || './files';
+    const max_file_size_mb = configMaxFileSize.value.trim();
     const auto_connect = configAutoConnect.checked;
 
     console.log(`[Config] Saving: nick=${nick}, server=${server}:${port}, channel=${channel}`);
     try {
-        const response = await fetch('/config', {
+        const response = await fetch('/api/config', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -387,6 +419,7 @@ configForm.addEventListener('submit', async (e) => {
                 idle_timeout,
                 search_timeout,
                 download_path,
+                max_file_size_mb,
                 auto_connect
             })
         });
@@ -397,7 +430,7 @@ configForm.addEventListener('submit', async (e) => {
             configError.classList.remove('hidden');
         } else {
             console.log('[Config] Saved successfully');
-            editingConfig = false;
+            switchTab('search');
             fetchStatus();
         }
     } catch (e) {
@@ -407,17 +440,9 @@ configForm.addEventListener('submit', async (e) => {
     }
 });
 
-// Edit config button handler
-editConfigBtn.addEventListener('click', async () => {
-    if (editingConfig) {
-        editingConfig = false;
-        configError.classList.add('hidden');
-        fetchStatus();
-        return;
-    }
-
+async function loadConfigIntoForm() {
     try {
-        const response = await fetch('/config');
+        const response = await fetch('/api/config');
         const data = await response.json();
         if (data.exists) {
             configNick.value = data.nick || '';
@@ -429,23 +454,33 @@ editConfigBtn.addEventListener('click', async () => {
             configIdleTimeout.value = data.idle_timeout || '20';
             configSearchTimeout.value = data.search_timeout || '60';
             configDownloadPath.value = data.download_path || './files';
+            configMaxFileSize.value = data.max_file_size_mb || '50';
             configAutoConnect.checked = data.auto_connect !== false;
+        } else {
+            // First run: fill empty fields with a random identity and the default settings,
+            // but never overwrite what the user has typed.
+            const fill = (input, value) => { if (!input.value && value != null) input.value = value; };
+            if (data.suggested) {
+                fill(configNick, data.suggested.nick);
+                fill(configUsername, data.suggested.username);
+            }
+            fill(configIdleTimeout, data.idle_timeout);
+            fill(configSearchTimeout, data.search_timeout);
         }
     } catch (e) {
         // Ignore errors, just show empty form
     }
-    editingConfig = true;
-    configCard.classList.remove('hidden');
     configError.classList.add('hidden');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-});
+}
 
-// Cancel config button handler
-cancelConfigBtn.addEventListener('click', () => {
-    editingConfig = false;
-    configError.classList.add('hidden');
-    fetchStatus();
-});
+// Activate the tab named by the URL path (deep links and reloads), without touching history
+switchTab(window.location.pathname.replace(/^\//, '') || 'search', false);
+
+// Load config values when switching to config tab (or on direct visit)
+document.querySelector('.tab[data-tab="config"]').addEventListener('click', loadConfigIntoForm);
+if (document.getElementById('tab-config').classList.contains('active')) {
+    loadConfigIntoForm();
+}
 
 // Connect/disconnect button handler
 connectBtn.addEventListener('click', async () => {
@@ -526,7 +561,7 @@ searchForm.addEventListener('submit', async (e) => {
     try {
         const formData = new FormData();
         formData.append('term', term);
-        const response = await fetch('/search', {
+        const response = await fetch('/api/search', {
             method: 'POST',
             body: formData
         });
@@ -543,7 +578,7 @@ searchForm.addEventListener('submit', async (e) => {
         errorDiv.textContent = 'Request failed';
         errorDiv.classList.remove('hidden');
     } finally {
-        searchBtn.disabled = false;
+        setTimeout(() => { searchBtn.disabled = false; }, 5000);
     }
 });
 
@@ -581,6 +616,7 @@ downloadSelectedBtn.addEventListener('click', async () => {
             errorDiv.classList.remove('hidden');
         } else {
             console.log(`[Download] Sent ${indices.length} request(s) to IRC`);
+            showBanner(`Queued ${indices.length} item${indices.length !== 1 ? 's' : ''} for download`);
         }
     } catch (e) {
         console.error('[Download] Request failed:', e);
@@ -594,6 +630,117 @@ downloadSelectedBtn.addEventListener('click', async () => {
 // Poll status every 2 seconds
 fetchStatus();
 setInterval(fetchStatus, 2000);
+
+// Activity log tab: tails the server's log buffer so IRC events, downloads and
+// errors can be followed from the browser instead of the terminal.
+const logContainer = document.getElementById('logContainer');
+const logEmpty = document.getElementById('logEmpty');
+const logFilterInput = document.getElementById('logFilterInput');
+const logShowDebug = document.getElementById('logShowDebug');
+const logAutoScroll = document.getElementById('logAutoScroll');
+const logClearBtn = document.getElementById('logClearBtn');
+const LOG_MAX_ENTRIES = 500;
+
+let logEntries = [];
+let logLastId = 0;
+let logFetchInFlight = false;
+
+function formatLogTime(ts) {
+    const d = new Date(ts);
+    const pad = n => String(n).padStart(2, '0');
+    return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+function logEntryVisible(entry) {
+    if (entry.level === 'debug' && !logShowDebug.checked) return false;
+    const filter = logFilterInput.value.toLowerCase().trim();
+    if (!filter) return true;
+    const haystack = `${entry.level} ${entry.message}`.toLowerCase();
+    return filter.split(/\s+/).every(w => haystack.includes(w));
+}
+
+function isScrolledToBottom(el) {
+    return el.scrollHeight - el.scrollTop - el.clientHeight < 8;
+}
+
+function renderLogEntry(entry) {
+    const line = document.createElement('div');
+    line.className = `log-line ${entry.level}`;
+    line.dataset.id = entry.id;
+    const time = document.createElement('span');
+    time.className = 'log-time';
+    time.textContent = formatLogTime(entry.ts);
+    time.title = new Date(entry.ts).toLocaleString();
+    const level = document.createElement('span');
+    level.className = 'log-level';
+    level.textContent = entry.level.toUpperCase();
+    const msg = document.createElement('span');
+    msg.className = 'log-msg';
+    msg.textContent = entry.message;
+    line.append(time, level, msg);
+    return line;
+}
+
+function renderLog() {
+    const stick = logAutoScroll.checked || isScrolledToBottom(logContainer);
+    const visible = logEntries.filter(logEntryVisible);
+    logContainer.replaceChildren(...visible.map(renderLogEntry));
+    if (visible.length === 0) {
+        logEmpty.textContent = logEntries.length ? 'No entries match the filter.' : 'No log entries yet.';
+        logContainer.appendChild(logEmpty);
+    }
+    if (stick) logContainer.scrollTop = logContainer.scrollHeight;
+}
+
+function appendLogEntries(entries) {
+    const stick = logAutoScroll.checked || isScrolledToBottom(logContainer);
+    const wasEmpty = logContainer.contains(logEmpty) && logEntries.length === 0;
+    for (const entry of entries) {
+        logEntries.push(entry);
+        if (logEntryVisible(entry)) {
+            if (logContainer.contains(logEmpty)) logEmpty.remove();
+            logContainer.appendChild(renderLogEntry(entry));
+        }
+    }
+    if (logEntries.length > LOG_MAX_ENTRIES) {
+        logEntries = logEntries.slice(-LOG_MAX_ENTRIES);
+        while (logContainer.children.length > LOG_MAX_ENTRIES) logContainer.firstChild.remove();
+    }
+    if (wasEmpty && logContainer.children.length === 0) logContainer.appendChild(logEmpty);
+    if (stick) logContainer.scrollTop = logContainer.scrollHeight;
+}
+
+async function fetchLog() {
+    if (logFetchInFlight) return;
+    logFetchInFlight = true;
+    try {
+        const response = await fetch(`/api/log?after=${logLastId}`);
+        if (!response.ok) return;
+        const data = await response.json();
+        if (data.entries.length > 0) {
+            appendLogEntries(data.entries);
+            logLastId = data.last_id;
+        }
+    } catch (e) {
+        // Server unreachable; the status poller already reports that.
+    } finally {
+        logFetchInFlight = false;
+    }
+}
+
+logFilterInput.addEventListener('input', renderLog);
+logShowDebug.addEventListener('change', renderLog);
+logClearBtn.addEventListener('click', () => {
+    logEntries = [];
+    renderLog();
+});
+// Scrolling away from the bottom pauses following; scrolling back down resumes it.
+logContainer.addEventListener('scroll', () => {
+    logAutoScroll.checked = isScrolledToBottom(logContainer);
+});
+
+fetchLog();
+setInterval(fetchLog, 2000);
 
 // Database search functions
 async function loadDbStats() {
@@ -640,6 +787,32 @@ async function searchDatabase(query = '', page = 1) {
     }
 }
 
+// Colour class for a nick: green when in the channel, red when not, plain when unknown (not connected).
+function nickClass(inChannel) {
+    if (inChannel === true) return 'nick nick-in';
+    if (inChannel === false) return 'nick nick-out';
+    return 'nick nick-unknown';
+}
+
+function nickTitle(inChannel) {
+    if (inChannel === true) return 'In channel';
+    if (inChannel === false) return 'Not in channel';
+    return 'Connect to see who is in the channel';
+}
+
+// One saved result row. The leading "!nick" is wrapped so its colour can be updated in place.
+function savedResultRow(result, idPrefix) {
+    const match = result.nick ? result.line.match(/^(!\S+)([\s\S]*)$/) : null;
+    const text = match
+        ? `<span class="${nickClass(result.in_channel)}" data-nick="${escapeHtml(result.nick)}" title="${nickTitle(result.in_channel)}">${escapeHtml(match[1])}</span>${escapeHtml(match[2])}`
+        : escapeHtml(result.line);
+    return `
+        <label class="db-result-item">
+            <input type="checkbox" id="${idPrefix}-${result.id}" data-line="${escapeHtml(result.line)}">
+            <span class="db-result-text">${text}</span>
+        </label>`;
+}
+
 function renderDbResults(results) {
     if (results.length === 0) {
         dbResultsContainer.innerHTML = '<p class="db-results-empty">No results found.</p>';
@@ -647,13 +820,7 @@ function renderDbResults(results) {
         return;
     }
 
-    dbResultsContainer.innerHTML = results.map((result, i) => `
-        <div class="db-result-item">
-            <input type="checkbox" id="db-result-${result.id}" data-line="${escapeHtml(result.line)}">
-            <span class="db-result-text">${escapeHtml(result.line)}</span>
-        </div>
-    `).join('');
-
+    dbResultsContainer.innerHTML = results.map(r => savedResultRow(r, 'db-result')).join('');
     dbResultsActions.classList.remove('hidden');
 }
 
@@ -696,8 +863,8 @@ dbUnselectAllBtn.addEventListener('click', () => {
     checkboxes.forEach(cb => cb.checked = false);
 });
 
-dbDownloadBtn.addEventListener('click', async () => {
-    const checkboxes = dbResultsContainer.querySelectorAll('input[type="checkbox"]:checked');
+async function downloadSavedLines(container, button) {
+    const checkboxes = container.querySelectorAll('input[type="checkbox"]:checked');
     const lines = Array.from(checkboxes).map(cb => cb.dataset.line);
 
     if (lines.length === 0) {
@@ -706,7 +873,7 @@ dbDownloadBtn.addEventListener('click', async () => {
     }
 
     console.log(`[Database] Requesting ${lines.length} item(s) from saved results`);
-    dbDownloadBtn.disabled = true;
+    button.disabled = true;
     try {
         const response = await fetch('/db/select', {
             method: 'POST',
@@ -719,14 +886,17 @@ dbDownloadBtn.addEventListener('click', async () => {
             showBanner(data.error);
         } else {
             console.log(`[Database] Sent ${data.count} request(s) to IRC`);
+            showBanner(`Queued ${data.count} item${data.count !== 1 ? 's' : ''} for download`);
         }
     } catch (e) {
         console.error('[Database] Request failed:', e);
         showBanner('Request failed');
     } finally {
-        dbDownloadBtn.disabled = false;
+        button.disabled = false;
     }
-});
+}
+
+dbDownloadBtn.addEventListener('click', () => downloadSavedLines(dbResultsContainer, dbDownloadBtn));
 
 clearDbBtn.addEventListener('click', () => {
     showConfirmBanner('Are you sure you want to clear all saved results? This cannot be undone.', async () => {
@@ -750,6 +920,117 @@ clearDbBtn.addEventListener('click', () => {
         }
     });
 });
+
+// Search tab: show saved matches while typing. Enter still runs a fresh IRC search.
+const cachedCard = document.getElementById('cachedCard');
+const cachedHint = document.getElementById('cachedHint');
+const cachedResultsContainer = document.getElementById('cachedResultsContainer');
+const cachedActions = document.getElementById('cachedActions');
+const cachedDownloadBtn = document.getElementById('cachedDownloadBtn');
+const cachedOpenSavedBtn = document.getElementById('cachedOpenSavedBtn');
+const CACHED_LIMIT = 50;
+
+let cachedQuery = '';
+let cachedTotal = 0;
+let cachedRequestSeq = 0;
+let cachedTypingTimer = null;
+
+async function loadCachedMatches(term) {
+    const seq = ++cachedRequestSeq;
+    try {
+        const params = new URLSearchParams({ q: term, limit: String(CACHED_LIMIT), offset: '0' });
+        const response = await fetch(`/db/search?${params}`);
+        const data = await response.json();
+        if (seq !== cachedRequestSeq) return; // a newer keystroke already won
+        if (!response.ok) throw new Error(data.error);
+        cachedQuery = term;
+        cachedTotal = data.total;
+        cachedResultsContainer.innerHTML = data.results.length
+            ? data.results.map(r => savedResultRow(r, 'cached-result')).join('')
+            : '<p class="db-results-empty">No saved matches.</p>';
+        cachedActions.classList.toggle('hidden', data.results.length === 0);
+    } catch (e) {
+        if (seq !== cachedRequestSeq) return;
+        cachedQuery = term;
+        cachedTotal = 0;
+        cachedResultsContainer.innerHTML = '<p class="db-results-empty">Could not load saved matches.</p>';
+        cachedActions.classList.add('hidden');
+    }
+    updateCachedCard();
+}
+
+// Hide the cached card once fresh IRC results for the same term are on screen.
+function updateCachedCard() {
+    const term = searchInput.value.trim();
+    const freshShown = lastStatusData && lastStatusData.status === 'lines_ready'
+        && (lastStatusData.search_term || '').toLowerCase() === term.toLowerCase();
+    const visible = term !== '' && cachedQuery === term && !freshShown;
+    cachedCard.classList.toggle('hidden', !visible);
+    if (!visible) return;
+
+    const searching = lastStatusData && lastStatusData.status === 'searching'
+        && (lastStatusData.search_term || '').toLowerCase() === term.toLowerCase();
+    const count = cachedTotal > CACHED_LIMIT
+        ? `Showing ${CACHED_LIMIT} of ${cachedTotal} saved matches.`
+        : `${cachedTotal} saved match${cachedTotal === 1 ? '' : 'es'}.`;
+    cachedHint.textContent = searching
+        ? `${count} Searching IRC for fresh results...`
+        : `${count} Press Enter to search IRC for fresh results.`;
+}
+
+searchInput.addEventListener('input', () => {
+    clearTimeout(cachedTypingTimer);
+    const term = searchInput.value.trim();
+    if (!term) {
+        cachedRequestSeq++;
+        cachedQuery = '';
+        updateCachedCard();
+        return;
+    }
+    cachedTypingTimer = setTimeout(() => loadCachedMatches(term), 250);
+});
+
+cachedDownloadBtn.addEventListener('click', () => downloadSavedLines(cachedResultsContainer, cachedDownloadBtn));
+
+cachedOpenSavedBtn.addEventListener('click', () => {
+    dbSearchInput.value = cachedQuery;
+    searchDatabase(cachedQuery, 1);
+    switchTab('saved');
+});
+
+// Keep nick colours current as people join and leave, without re-rendering the lists
+// (that would clear checkbox selections).
+let presenceInFlight = false;
+
+async function refreshNickPresence() {
+    if (presenceInFlight || document.hidden) return;
+    const spans = document.querySelectorAll('.tab-panel.active .nick[data-nick]');
+    if (spans.length === 0) return;
+    const nicks = [...new Set([...spans].map(s => s.dataset.nick))];
+    presenceInFlight = true;
+    try {
+        const response = await fetch('/api/presence', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ nicks })
+        });
+        if (!response.ok) return;
+        const data = await response.json();
+        document.querySelectorAll('.nick[data-nick]').forEach(span => {
+            if (!(span.dataset.nick in data.present)) return;
+            const inChannel = data.present[span.dataset.nick];
+            span.className = nickClass(inChannel);
+            span.title = nickTitle(inChannel);
+        });
+    } catch (e) {
+        // Server unreachable; the status poller already reports that.
+    } finally {
+        presenceInFlight = false;
+    }
+}
+
+setInterval(refreshNickPresence, 5000);
+document.querySelectorAll('.tab').forEach(tab => tab.addEventListener('click', refreshNickPresence));
 
 // Load database stats and initial results on page load
 loadDbStats();
